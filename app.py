@@ -1,0 +1,146 @@
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory
+import sqlite3
+import os
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.secret_key = 'supersecretkey'
+
+DB_NAME = 'repse_system.db'
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+DOCUMENTOS_OBLIGATORIOS = [
+    "Cédula fiscal",
+    "Identificación oficial",
+    "Acta constitutiva",
+    "Constancia RFC",
+    "Registros IMSS",
+    "Comprobantes de nómina",
+    "Documentación de capacitación"
+]
+
+# Conexión a la base de datos
+def get_db():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        usuario = request.form['usuario']
+        contrasena = request.form['contrasena']
+        conn = get_db()
+        user = conn.execute('SELECT * FROM usuarios WHERE usuario=?', (usuario,)).fetchone()
+        if user and check_password_hash(user['password'], contrasena):
+            if user['estado'] == 'pendiente':
+                flash('Tu cuenta está pendiente de aprobación.')
+                return redirect(url_for('login'))
+            session['usuario'] = user['usuario']
+            session['rol'] = user['rol']
+            if user['rol'] == 1:
+                return redirect(url_for('dashboard_admin'))
+            else:
+                return redirect(url_for('dashboard_proveedor'))
+        else:
+            flash('Credenciales incorrectas')
+    return render_template('login.html')
+
+@app.route('/registro', methods=['GET', 'POST'])
+def registro():
+    if request.method == 'POST':
+        nombre = request.form['nombre']
+        usuario = request.form['usuario']
+        correo = request.form['correo']
+        rol = int(request.form['rol'])
+        password = generate_password_hash(request.form['contrasena'])
+        conn = get_db()
+        conn.execute('INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(?,?,?,?,?,?)',
+                     (nombre, usuario, correo, password, rol, 'pendiente'))
+        conn.commit()
+        flash('Registro exitoso. Espera aprobación del administrador.')
+        return redirect(url_for('login'))
+    return render_template('registro.html')
+
+@app.route('/admin/dashboard')
+def dashboard_admin():
+    if 'usuario' not in session or session['rol'] != 1:
+        flash('Acceso denegado')
+        return redirect(url_for('login'))
+    conn = get_db()
+    # Usuarios pendientes
+    pendientes = conn.execute("SELECT * FROM usuarios WHERE estado='pendiente'").fetchall()
+    # Proveedores aprobados
+    proveedores = conn.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2").fetchall()
+    documentos_por_usuario = {}
+    for p in proveedores:
+        docs = conn.execute("SELECT * FROM documentos WHERE usuario_id=?", (p['id'],)).fetchall()
+        documentos_por_usuario[p['id']] = {d['tipo_documento']: d for d in docs}
+    return render_template('dashboard_admin.html', pendientes=pendientes,
+                           proveedores=proveedores,
+                           documentos_por_usuario=documentos_por_usuario,
+                           DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
+
+@app.route('/admin/accion/<int:id>/<accion>')
+def accion(id, accion):
+    if 'usuario' not in session or session['rol'] != 1:
+        flash('Acceso denegado')
+        return redirect(url_for('login'))
+    estado = 'aprobado' if accion == 'aprobar' else 'rechazado'
+    conn = get_db()
+    conn.execute('UPDATE usuarios SET estado=? WHERE id=?', (estado, id))
+    conn.commit()
+    return redirect(url_for('dashboard_admin'))
+
+@app.route('/proveedor/dashboard', methods=['GET', 'POST'])
+def dashboard_proveedor():
+    if 'usuario' not in session or session['rol'] != 2:
+        flash('Acceso denegado')
+        return redirect(url_for('login'))
+    conn = get_db()
+    user = conn.execute('SELECT * FROM usuarios WHERE usuario=?', (session['usuario'],)).fetchone()
+    if user['estado'] != 'aprobado':
+        flash('Tu cuenta aún no ha sido aprobada.')
+        return redirect(url_for('login'))
+
+    mensaje = ''
+    if request.method == 'POST':
+        tipo = request.form['tipo_documento']
+        if 'documento' in request.files:
+            archivo = request.files['documento']
+            if archivo.filename != '':
+                extension = archivo.filename.rsplit('.', 1)[1].lower()
+                if extension not in ['pdf', 'jpg', 'jpeg', 'png']:
+                    mensaje = 'Tipo de archivo no permitido.'
+                elif len(archivo.read()) > 5*1024*1024:
+                    mensaje = 'El archivo excede el tamaño máximo permitido.'
+                else:
+                    archivo.seek(0)
+                    ruta = os.path.join(UPLOAD_FOLDER, archivo.filename)
+                    archivo.save(ruta)
+                    conn.execute('INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida) VALUES(?,?,?,?,datetime("now"))',
+                                 (user['id'], archivo.filename, archivo.filename, tipo))
+                    conn.commit()
+                    mensaje = f'Documento "{tipo}" subido correctamente.'
+
+    # Obtener documentos subidos
+    docs_subidos = conn.execute('SELECT * FROM documentos WHERE usuario_id=?', (user['id'],)).fetchall()
+    docs_dict = {d['tipo_documento']: d for d in docs_subidos}
+
+    return render_template('dashboard_proveedor.html',
+                           mensaje=mensaje,
+                           documentos_subidos=docs_dict,
+                           DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
+
+@app.route('/uploads/<filename>')
+def descargar(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+if __name__ == '__main__':
+    app.run(debug=True)

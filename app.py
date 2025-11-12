@@ -7,6 +7,8 @@ app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
 DB_NAME = 'repse_system.db'
+
+# Para Render, puedes usar Persistent Disk, por ejemplo "/mnt/data/uploads"
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -20,11 +22,17 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
+# Crear base de datos si no existe
+if not os.path.exists(DB_NAME):
+    import init_db
+
 # Conexión a la base de datos
 def get_db():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
+
+# -------------------- RUTAS --------------------
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -63,15 +71,14 @@ def registro():
         return redirect(url_for('login'))
     return render_template('registro.html')
 
+# -------------------- DASHBOARD ADMIN --------------------
 @app.route('/admin/dashboard')
 def dashboard_admin():
     if 'usuario' not in session or session['rol'] != 1:
         flash('Acceso denegado')
         return redirect(url_for('login'))
     conn = get_db()
-    # Usuarios pendientes
     pendientes = conn.execute("SELECT * FROM usuarios WHERE estado='pendiente'").fetchall()
-    # Proveedores aprobados
     proveedores = conn.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2").fetchall()
     documentos_por_usuario = {}
     for p in proveedores:
@@ -93,6 +100,7 @@ def accion(id, accion):
     conn.commit()
     return redirect(url_for('dashboard_admin'))
 
+# -------------------- DASHBOARD PROVEEDOR --------------------
 @app.route('/proveedor/dashboard', methods=['GET', 'POST'])
 def dashboard_proveedor():
     if 'usuario' not in session or session['rol'] != 2:
@@ -124,7 +132,6 @@ def dashboard_proveedor():
                     conn.commit()
                     mensaje = f'Documento "{tipo}" subido correctamente.'
 
-    # Obtener documentos subidos
     docs_subidos = conn.execute('SELECT * FROM documentos WHERE usuario_id=?', (user['id'],)).fetchall()
     docs_dict = {d['tipo_documento']: d for d in docs_subidos}
 
@@ -133,14 +140,19 @@ def dashboard_proveedor():
                            documentos_subidos=docs_dict,
                            DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
 
+# -------------------- DESCARGAR DOCUMENTOS --------------------
 @app.route('/uploads/<filename>')
 def descargar(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
+# -------------------- LOGOUT --------------------
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# -------------------- EJECUCIÓN --------------------
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    app.run(host="0.0.0.0", port=port)

@@ -40,23 +40,18 @@
       <li class="nav-item" role="presentation">
         <button class="nav-link" id="pendientes-tab" data-bs-toggle="tab" data-bs-target="#pendientes" type="button" role="tab">Usuarios Pendientes</button>
       </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="gestion-tab" data-bs-toggle="tab" data-bs-target="#gestion" type="button" role="tab">Gestión de Usuarios</button>
+      </li>
     </ul>
 
     <div class="tab-content">
-      <!-- PESTAÑA PROVEEDORES -->
+
+      <!-- 🟢 PESTAÑA PROVEEDORES -->
       <div class="tab-pane fade show active" id="proveedores" role="tabpanel">
         <div class="row my-3">
           <div class="col-md-4">
             <input type="text" id="searchProveedor" class="form-control" placeholder="Buscar proveedor...">
-          </div>
-          <div class="col-md-4">
-            <select id="filtroProveedor" class="form-select">
-              <option value="todos">Todos</option>
-              <option value="aprobado">Aprobados</option>
-              <option value="pendiente">No aprobados</option>
-              <option value="alfabetico">Orden alfabético</option>
-              <option value="reciente">Más reciente</option>
-            </select>
           </div>
         </div>
 
@@ -69,6 +64,7 @@
                   <th>Documento</th>
                   <th>Archivo</th>
                   <th>Estado</th>
+                  <th>Descargar</th>
                 </tr>
               </thead>
               <tbody>
@@ -89,6 +85,13 @@
                       ❌
                     {% endif %}
                   </td>
+                  <td>
+                    {% if documentos_por_usuario[p['id']].get(doc) %}
+                      <a href="{{ url_for('descargar', filename=documentos_por_usuario[p['id']][doc]['ruta']) }}" class="btn btn-outline-primary btn-sm">Descargar</a>
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -99,7 +102,7 @@
         {% endfor %}
       </div>
 
-      <!-- PESTAÑA USUARIOS PENDIENTES -->
+      <!-- 🟡 PESTAÑA USUARIOS PENDIENTES -->
       <div class="tab-pane fade" id="pendientes" role="tabpanel">
         {% if pendientes %}
         <table class="table table-bordered mt-3">
@@ -131,6 +134,32 @@
         <p>No hay usuarios pendientes.</p>
         {% endif %}
       </div>
+
+      <!-- 🔴 PESTAÑA GESTIÓN DE USUARIOS -->
+      <div class="tab-pane fade" id="gestion" role="tabpanel">
+        <h5 class="mt-3">Eliminar Proveedores</h5>
+        {% if proveedores %}
+        <table class="table table-bordered mt-2">
+          <thead>
+            <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Acción</th></tr>
+          </thead>
+          <tbody>
+            {% for p in proveedores %}
+            <tr>
+              <td>{{ p['nombre'] }}</td>
+              <td>{{ p['usuario'] }}</td>
+              <td>{{ p['correo'] }}</td>
+              <td>
+                <button class="btn btn-danger btn-sm eliminar-btn" data-id="{{ p['id'] }}">Eliminar</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p>No hay proveedores registrados.</p>
+        {% endif %}
+      </div>
     </div>
 
     <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary mt-2">Cerrar sesión</a>
@@ -146,22 +175,17 @@
       });
     });
 
-    $('#filtroProveedor').on('change', function() {
-      let filtro = $(this).val();
-      let cards = $('.proveedor-card');
+    // ELIMINAR PROVEEDOR CON CONFIRMACIÓN
+    $('.eliminar-btn').on('click', function() {
+      let id = $(this).data('id');
+      let contrasena = prompt("Por favor, ingrese su contraseña de administrador para confirmar:");
 
-      if(filtro === 'todos') {
-        cards.show();
-      } else if(filtro === 'aprobado') {
-        cards.show(); // Para simplificar, todos son aprobados. Se puede agregar flag en back-end si quieres.
-      } else if(filtro === 'pendiente') {
-        cards.hide(); // Para ejemplo
-      } else if(filtro === 'alfabetico') {
-        cards.sort(function(a,b){
-          return $(a).data('nombre').localeCompare($(b).data('nombre'));
-        }).appendTo('.tab-pane#proveedores');
+      if (contrasena) {
+        $.post('/admin/eliminar/' + id, { contrasena: contrasena }, function(response) {
+          alert(response.mensaje);
+          if (response.success) location.reload();
+        });
       }
-      // El filtro "reciente" requeriría fecha en back-end
     });
   </script>
 </body>

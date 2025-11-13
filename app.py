@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, jsonify
 import sqlite3
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -6,9 +6,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
+# === CONFIGURACIÓN ===
 DB_NAME = 'repse_system.db'
-
-# Para Render, puedes usar Persistent Disk, por ejemplo "/mnt/data/uploads"
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -22,18 +21,14 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
-# Crear base de datos si no existe
-if not os.path.exists(DB_NAME):
-    import init_db
-
-# Conexión a la base de datos
+# === CONEXIÓN A BASE DE DATOS ===
 def get_db():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
 
-# -------------------- RUTAS --------------------
 
+# === RUTA LOGIN ===
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -41,6 +36,7 @@ def login():
         contrasena = request.form['contrasena']
         conn = get_db()
         user = conn.execute('SELECT * FROM usuarios WHERE usuario=?', (usuario,)).fetchone()
+
         if user and check_password_hash(user['password'], contrasena):
             if user['estado'] == 'pendiente':
                 flash('Tu cuenta está pendiente de aprobación.')
@@ -55,6 +51,8 @@ def login():
             flash('Credenciales incorrectas')
     return render_template('login.html')
 
+
+# === RUTA REGISTRO ===
 @app.route('/registro', methods=['GET', 'POST'])
 def registro():
     if request.method == 'POST':
@@ -63,6 +61,7 @@ def registro():
         correo = request.form['correo']
         rol = int(request.form['rol'])
         password = generate_password_hash(request.form['contrasena'])
+
         conn = get_db()
         conn.execute('INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(?,?,?,?,?,?)',
                      (nombre, usuario, correo, password, rol, 'pendiente'))
@@ -71,41 +70,71 @@ def registro():
         return redirect(url_for('login'))
     return render_template('registro.html')
 
-# -------------------- DASHBOARD ADMIN --------------------
+
+# === DASHBOARD ADMINISTRADOR ===
 @app.route('/admin/dashboard')
 def dashboard_admin():
     if 'usuario' not in session or session['rol'] != 1:
         flash('Acceso denegado')
         return redirect(url_for('login'))
+
     conn = get_db()
     pendientes = conn.execute("SELECT * FROM usuarios WHERE estado='pendiente'").fetchall()
     proveedores = conn.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2").fetchall()
+
     documentos_por_usuario = {}
     for p in proveedores:
         docs = conn.execute("SELECT * FROM documentos WHERE usuario_id=?", (p['id'],)).fetchall()
         documentos_por_usuario[p['id']] = {d['tipo_documento']: d for d in docs}
-    return render_template('dashboard_admin.html', pendientes=pendientes,
+
+    return render_template('dashboard_admin.html',
+                           pendientes=pendientes,
                            proveedores=proveedores,
                            documentos_por_usuario=documentos_por_usuario,
                            DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
 
+
+# === APROBAR O RECHAZAR USUARIOS ===
 @app.route('/admin/accion/<int:id>/<accion>')
 def accion(id, accion):
     if 'usuario' not in session or session['rol'] != 1:
         flash('Acceso denegado')
         return redirect(url_for('login'))
+
     estado = 'aprobado' if accion == 'aprobar' else 'rechazado'
     conn = get_db()
     conn.execute('UPDATE usuarios SET estado=? WHERE id=?', (estado, id))
     conn.commit()
+    flash(f'Usuario {accion} correctamente.')
     return redirect(url_for('dashboard_admin'))
 
-# -------------------- DASHBOARD PROVEEDOR --------------------
+
+# === ELIMINAR PROVEEDOR (CON CONTRASEÑA) ===
+@app.route('/admin/eliminar/<int:id>', methods=['POST'])
+def eliminar_usuario(id):
+    if 'usuario' not in session or session['rol'] != 1:
+        return jsonify({'success': False, 'mensaje': 'Acceso denegado.'})
+
+    contrasena = request.form.get('contrasena', '')
+    conn = get_db()
+    admin = conn.execute("SELECT * FROM usuarios WHERE usuario=?", (session['usuario'],)).fetchone()
+
+    if not check_password_hash(admin['password'], contrasena):
+        return jsonify({'success': False, 'mensaje': 'Contraseña incorrecta.'})
+
+    conn.execute("DELETE FROM documentos WHERE usuario_id=?", (id,))
+    conn.execute("DELETE FROM usuarios WHERE id=?", (id,))
+    conn.commit()
+    return jsonify({'success': True, 'mensaje': 'Proveedor eliminado correctamente.'})
+
+
+# === DASHBOARD PROVEEDOR ===
 @app.route('/proveedor/dashboard', methods=['GET', 'POST'])
 def dashboard_proveedor():
     if 'usuario' not in session or session['rol'] != 2:
         flash('Acceso denegado')
         return redirect(url_for('login'))
+
     conn = get_db()
     user = conn.execute('SELECT * FROM usuarios WHERE usuario=?', (session['usuario'],)).fetchone()
     if user['estado'] != 'aprobado':
@@ -121,8 +150,6 @@ def dashboard_proveedor():
                 extension = archivo.filename.rsplit('.', 1)[1].lower()
                 if extension not in ['pdf', 'jpg', 'jpeg', 'png']:
                     mensaje = 'Tipo de archivo no permitido.'
-                elif len(archivo.read()) > 5*1024*1024:
-                    mensaje = 'El archivo excede el tamaño máximo permitido.'
                 else:
                     archivo.seek(0)
                     ruta = os.path.join(UPLOAD_FOLDER, archivo.filename)
@@ -140,19 +167,21 @@ def dashboard_proveedor():
                            documentos_subidos=docs_dict,
                            DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
 
-# -------------------- DESCARGAR DOCUMENTOS --------------------
+
+# === DESCARGAR ARCHIVOS ===
 @app.route('/uploads/<filename>')
 def descargar(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
-# -------------------- LOGOUT --------------------
+
+# === LOGOUT ===
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# -------------------- EJECUCIÓN --------------------
+
+# === MAIN ===
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    app.run(host="0.0.0.0", port=port)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)

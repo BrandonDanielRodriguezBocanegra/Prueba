@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
-# === CONFIGURACIÓN ===
+# --- CONFIGURACIONES ---
 DB_NAME = 'repse_system.db'
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -21,19 +21,19 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
-# === CONEXIÓN A BASE DE DATOS ===
+# --- CONEXIÓN BASE DE DATOS ---
 def get_db():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
 
-
-# === RUTA LOGIN ===
+# --- LOGIN ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         usuario = request.form['usuario']
         contrasena = request.form['contrasena']
+
         conn = get_db()
         user = conn.execute('SELECT * FROM usuarios WHERE usuario=?', (usuario,)).fetchone()
 
@@ -41,18 +41,19 @@ def login():
             if user['estado'] == 'pendiente':
                 flash('Tu cuenta está pendiente de aprobación.')
                 return redirect(url_for('login'))
+
             session['usuario'] = user['usuario']
             session['rol'] = user['rol']
+
             if user['rol'] == 1:
                 return redirect(url_for('dashboard_admin'))
             else:
                 return redirect(url_for('dashboard_proveedor'))
         else:
-            flash('Credenciales incorrectas')
+            flash('Credenciales incorrectas.')
     return render_template('login.html')
 
-
-# === RUTA REGISTRO ===
+# --- REGISTRO ---
 @app.route('/registro', methods=['GET', 'POST'])
 def registro():
     if request.method == 'POST':
@@ -68,10 +69,10 @@ def registro():
         conn.commit()
         flash('Registro exitoso. Espera aprobación del administrador.')
         return redirect(url_for('login'))
+
     return render_template('registro.html')
 
-
-# === DASHBOARD ADMINISTRADOR ===
+# --- DASHBOARD ADMIN ---
 @app.route('/admin/dashboard')
 def dashboard_admin():
     if 'usuario' not in session or session['rol'] != 1:
@@ -93,8 +94,7 @@ def dashboard_admin():
                            documentos_por_usuario=documentos_por_usuario,
                            DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
 
-
-# === APROBAR O RECHAZAR USUARIOS ===
+# --- APROBAR / RECHAZAR ---
 @app.route('/admin/accion/<int:id>/<accion>')
 def accion(id, accion):
     if 'usuario' not in session or session['rol'] != 1:
@@ -105,30 +105,15 @@ def accion(id, accion):
     conn = get_db()
     conn.execute('UPDATE usuarios SET estado=? WHERE id=?', (estado, id))
     conn.commit()
-    flash(f'Usuario {accion} correctamente.')
+
     return redirect(url_for('dashboard_admin'))
 
+# --- DESCARGAR DOCUMENTOS ---
+@app.route('/uploads/<filename>')
+def descargar(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
-# === ELIMINAR PROVEEDOR (CON CONTRASEÑA) ===
-@app.route('/admin/eliminar/<int:id>', methods=['POST'])
-def eliminar_usuario(id):
-    if 'usuario' not in session or session['rol'] != 1:
-        return jsonify({'success': False, 'mensaje': 'Acceso denegado.'})
-
-    contrasena = request.form.get('contrasena', '')
-    conn = get_db()
-    admin = conn.execute("SELECT * FROM usuarios WHERE usuario=?", (session['usuario'],)).fetchone()
-
-    if not check_password_hash(admin['password'], contrasena):
-        return jsonify({'success': False, 'mensaje': 'Contraseña incorrecta.'})
-
-    conn.execute("DELETE FROM documentos WHERE usuario_id=?", (id,))
-    conn.execute("DELETE FROM usuarios WHERE id=?", (id,))
-    conn.commit()
-    return jsonify({'success': True, 'mensaje': 'Proveedor eliminado correctamente.'})
-
-
-# === DASHBOARD PROVEEDOR ===
+# --- DASHBOARD PROVEEDOR ---
 @app.route('/proveedor/dashboard', methods=['GET', 'POST'])
 def dashboard_proveedor():
     if 'usuario' not in session or session['rol'] != 2:
@@ -137,6 +122,7 @@ def dashboard_proveedor():
 
     conn = get_db()
     user = conn.execute('SELECT * FROM usuarios WHERE usuario=?', (session['usuario'],)).fetchone()
+
     if user['estado'] != 'aprobado':
         flash('Tu cuenta aún no ha sido aprobada.')
         return redirect(url_for('login'))
@@ -151,7 +137,6 @@ def dashboard_proveedor():
                 if extension not in ['pdf', 'jpg', 'jpeg', 'png']:
                     mensaje = 'Tipo de archivo no permitido.'
                 else:
-                    archivo.seek(0)
                     ruta = os.path.join(UPLOAD_FOLDER, archivo.filename)
                     archivo.save(ruta)
                     conn.execute('INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida) VALUES(?,?,?,?,datetime("now"))',
@@ -167,21 +152,42 @@ def dashboard_proveedor():
                            documentos_subidos=docs_dict,
                            DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
 
+# --- GESTIÓN DE USUARIOS (ELIMINAR PROVEEDORES) ---
+@app.route('/admin/eliminar_usuario', methods=['POST'])
+def eliminar_usuario():
+    if 'usuario' not in session or session['rol'] != 1:
+        return jsonify({"error": "Acceso denegado"}), 403
 
-# === DESCARGAR ARCHIVOS ===
-@app.route('/uploads/<filename>')
-def descargar(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
+    data = request.json
+    usuario_id = data.get('usuario_id')
+    password = data.get('password')
 
+    conn = get_db()
+    admin = conn.execute('SELECT * FROM usuarios WHERE usuario=?', (session['usuario'],)).fetchone()
 
-# === LOGOUT ===
+    if not check_password_hash(admin['password'], password):
+        return jsonify({"error": "Contraseña incorrecta"}), 401
+
+    # Borrar documentos asociados
+    docs = conn.execute('SELECT ruta FROM documentos WHERE usuario_id=?', (usuario_id,)).fetchall()
+    for doc in docs:
+        try:
+            os.remove(os.path.join(UPLOAD_FOLDER, doc['ruta']))
+        except:
+            pass
+
+    conn.execute('DELETE FROM documentos WHERE usuario_id=?', (usuario_id,))
+    conn.execute('DELETE FROM usuarios WHERE id=?', (usuario_id,))
+    conn.commit()
+
+    return jsonify({"success": True})
+
+# --- LOGOUT ---
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
-
-# === MAIN ===
+# --- INICIO APP ---
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(debug=True, host='0.0.0.0')

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Eliminar Proveedor</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+</head>
+
+<body class="p-4">
+
+<h3>Eliminar proveedor: {{ provider.nombre }}</h3>
+<p>Esta acción eliminará todos sus proyectos y documentos.</p>
+
+<form method="POST" class="col-md-4">
+
+    <label>Contraseña del administrador:</label>
+    <input type="password" name="password" class="form-control mb-3" required>
+
+    <button class="btn btn-danger w-100">Eliminar definitivamente</button>
+
+    <a href="/admin/dashboard" class="btn btn-secondary w-100 mt-2">Cancelar</a>
+</form>
+
+</body>
+</html>

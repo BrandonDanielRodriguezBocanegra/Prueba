@@ -1,10 +1,14 @@
 # init_db.py
 import sqlite3, os
+from werkzeug.security import generate_password_hash
+
 DB_NAME = 'repse_system.db'
+
+# Conectar o crear la DB
 conn = sqlite3.connect(DB_NAME)
 c = conn.cursor()
 
-# usuarios table
+# Tabla usuarios
 c.execute('''
 CREATE TABLE IF NOT EXISTS usuarios(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,7 +21,7 @@ CREATE TABLE IF NOT EXISTS usuarios(
 )
 ''')
 
-# projects table
+# Tabla projects
 c.execute('''
 CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +33,7 @@ CREATE TABLE IF NOT EXISTS projects (
 )
 ''')
 
-# documentos table
+# Tabla documentos
 c.execute('''
 CREATE TABLE IF NOT EXISTS documentos(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,13 +48,14 @@ CREATE TABLE IF NOT EXISTS documentos(
 )
 ''')
 
-# create admin if not exists
+# Crear admin si no existe
 c.execute("SELECT * FROM usuarios WHERE usuario='admin'")
 if not c.fetchone():
-    from werkzeug.security import generate_password_hash
     password_hash = generate_password_hash('admin123')
-    c.execute("INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(?,?,?,?,?,?)",
-              ('Administrador Principal', 'admin', 'admin@empresa.com', password_hash, 1, 'aprobado'))
+    c.execute(
+        "INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(?,?,?,?,?,?)",
+        ('Administrador Principal', 'admin', 'admin@empresa.com', password_hash, 1, 'aprobado')
+    )
 
 conn.commit()
 conn.close()

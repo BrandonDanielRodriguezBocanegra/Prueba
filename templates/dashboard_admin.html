@@ -27,213 +27,163 @@
     }
     .table th { background-color: #ff6a00; color: white; }
 
-    /* --- Pestañas --- */
-    .nav-tabs {
-      border-bottom: 3px solid rgba(255,255,255,0.3);
-      margin-bottom: 15px;
-    }
-    .nav-tabs .nav-link {
-      color: rgba(255,255,255,0.8);
-      font-weight: 500;
-      border: none;
-      border-bottom: 3px solid transparent;
-      transition: all 0.3s ease;
-    }
-    .nav-tabs .nav-link:hover {
-      color: #fff;
-      border-bottom: 3px solid rgba(255,255,255,0.5);
-    }
-    .nav-tabs .nav-link.active {
-      color: #fff !important;
-      background: transparent !important;
-      border-bottom: 3px solid #fff;
-      font-weight: bold;
-    }
+    /* PESTAÑAS */
+    .nav-tabs { border-bottom: 3px solid rgba(255,255,255,0.3); margin-bottom: 15px; }
+    .nav-tabs .nav-link { color: rgba(255,255,255,0.8); font-weight: 500; border: none; border-bottom: 3px solid transparent; transition: all 0.3s ease; }
+    .nav-tabs .nav-link:hover { color: #fff; border-bottom: 3px solid rgba(255,255,255,0.5); }
+    .nav-tabs .nav-link.active { color: #fff !important; border-bottom: 3px solid #fff; font-weight: bold; }
 
-    /* --- Botón cerrar sesión --- */
-    .logout-btn {
-      background-color: rgba(255,255,255,0.2);
-      color: #fff;
-      border: 1px solid #fff;
-      transition: all 0.3s ease;
-    }
-    .logout-btn:hover {
-      background-color: #fff;
-      color: #6600ff;
-      border-color: #fff;
-    }
+    .logout-btn { background-color: rgba(255,255,255,0.2); color: #fff; border: 1px solid #fff; transition: all 0.3s ease; }
+    .logout-btn:hover { background-color: #fff; color: #6600ff; border-color: #fff; }
+
+    .container { padding-bottom: 30px; }
   </style>
 </head>
 <body>
-  <div class="container mt-4">
-    <h3 class="text-white mb-4">Dashboard Administrador</h3>
+<div class="container mt-4">
+  <h3 class="text-white mb-4">Dashboard Administrador</h3>
 
-    <!-- PESTAÑAS -->
-    <ul class="nav nav-tabs" id="adminTabs" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="proveedores-tab" data-bs-toggle="tab" data-bs-target="#proveedores" type="button" role="tab">Proveedores</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="pendientes-tab" data-bs-toggle="tab" data-bs-target="#pendientes" type="button" role="tab">Usuarios Pendientes</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="gestion-tab" data-bs-toggle="tab" data-bs-target="#gestion" type="button" role="tab">Gestión de Usuarios</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="recordatorio-tab" data-bs-toggle="tab" data-bs-target="#recordatorio" type="button" role="tab">Recordatorios</button>
-      </li>
-    </ul>
+  <!-- PESTAÑAS -->
+  <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="proveedores-tab" data-bs-toggle="tab" data-bs-target="#proveedores" type="button" role="tab">Proveedores</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="pendientes-tab" data-bs-toggle="tab" data-bs-target="#pendientes" type="button" role="tab">Usuarios Pendientes</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="gestion-tab" data-bs-toggle="tab" data-bs-target="#gestion" type="button" role="tab">Gestión de Usuarios</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="recordatorios-tab" data-bs-toggle="tab" data-bs-target="#recordatorios" type="button" role="tab">Recordatorios</button>
+    </li>
+  </ul>
 
-    <div class="tab-content">
-
-      <!-- PESTAÑA PROVEEDORES -->
-      <div class="tab-pane fade show active" id="proveedores" role="tabpanel">
-        {% for p in proveedores %}
-        <div class="card mb-3">
-          <h5>{{ p['nombre'] }} ({{ p['usuario'] }})</h5>
+  <div class="tab-content">
+    <!-- PESTAÑA PROVEEDORES -->
+    <div class="tab-pane fade show active" id="proveedores" role="tabpanel">
+      {% for p in proveedores %}
+      <div class="card proveedor-card mb-3">
+        <h5>{{ p['nombre'] }} ({{ p['usuario'] }})</h5>
+        {% set docs_by_user = documentos_por_usuario[p['id']] %}
+        {% for project in projects %}
+          {% if project['provider_id'] == p['id'] %}
+          <h6>Proyecto: {{ project['name'] }} - {{ project['created_at'] }}</h6>
           <table class="table table-bordered">
             <thead>
-              <tr>
-                <th>Proyecto</th>
-                <th>Documentos Subidos</th>
-                <th>Fecha</th>
-              </tr>
+              <tr><th>Documento</th><th>Archivo</th><th>Estado</th></tr>
             </thead>
             <tbody>
-              {% for proj in projects if proj['provider_id']==p['id'] %}
+              {% for doc in DOCUMENTOS_OBLIGATORIOS %}
               <tr>
-                <td>{{ proj['name'] }}</td>
+                <td>{{ doc }}</td>
                 <td>
-                  {% for doc in documentos_por_usuario[p['id']].get(proj['id'], []) %}
-                    {{ doc['tipo_documento'] }} ✅<br>
-                  {% else %}
-                    ❌
-                  {% endfor %}
+                  {% if docs_by_user.get(project['id']) %}
+                    {% for d in docs_by_user[project['id']] %}
+                      {% if d['tipo_documento'] == doc %}
+                        {{ d['nombre_archivo'] }}
+                      {% endif %}
+                    {% endfor %}
+                  {% else %}-{% endif %}
                 </td>
-                <td>{{ proj['created_at'] }}</td>
+                <td>
+                  {% if docs_by_user.get(project['id']) %}
+                    {% for d in docs_by_user[project['id']] %}
+                      {% if d['tipo_documento'] == doc %}✅{% endif %}
+                    {% endfor %}
+                  {% else %}❌{% endif %}
+                </td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
-        </div>
-        {% else %}
-          <p>No hay proveedores registrados.</p>
+          {% endif %}
         {% endfor %}
       </div>
+      {% else %}
+      <p>No hay proveedores aprobados.</p>
+      {% endfor %}
+    </div>
 
-      <!-- PESTAÑA USUARIOS PENDIENTES -->
-      <div class="tab-pane fade" id="pendientes" role="tabpanel">
-        {% if pendientes %}
-        <table class="table table-bordered mt-3">
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Usuario</th>
-              <th>Correo</th>
-              <th>Rol</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for p in pendientes %}
-            <tr>
-              <td>{{ p['nombre'] }}</td>
-              <td>{{ p['usuario'] }}</td>
-              <td>{{ p['correo'] }}</td>
-              <td>{% if p['rol']==1 %}Admin{% else %}Proveedor{% endif %}</td>
-              <td>
-                <a href="{{ url_for('accion', id=p['id'], accion='aprobar') }}" class="btn btn-success btn-sm">Aprobar</a>
-                <a href="{{ url_for('accion', id=p['id'], accion='rechazar') }}" class="btn btn-danger btn-sm">Rechazar</a>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <p>No hay usuarios pendientes.</p>
-        {% endif %}
-      </div>
+    <!-- PESTAÑA USUARIOS PENDIENTES -->
+    <div class="tab-pane fade" id="pendientes" role="tabpanel">
+      {% if pendientes %}
+      <table class="table table-bordered mt-3">
+        <thead>
+          <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Acciones</th></tr>
+        </thead>
+        <tbody>
+          {% for p in pendientes %}
+          <tr>
+            <td>{{ p['nombre'] }}</td>
+            <td>{{ p['usuario'] }}</td>
+            <td>{{ p['correo'] }}</td>
+            <td>{% if p['rol']==1 %}Admin{% else %}Proveedor{% endif %}</td>
+            <td>
+              <a href="{{ url_for('accion', id=p['id'], accion='aprobar') }}" class="btn btn-success btn-sm">Aprobar</a>
+              <a href="{{ url_for('accion', id=p['id'], accion='rechazar') }}" class="btn btn-danger btn-sm">Rechazar</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p>No hay usuarios pendientes.</p>{% endif %}
+    </div>
 
-      <!-- PESTAÑA GESTIÓN DE USUARIOS -->
-      <div class="tab-pane fade" id="gestion" role="tabpanel">
-        <h5>Eliminar Proveedores</h5>
-        {% for p in proveedores %}
-        <div class="card mb-2">
-          <div class="d-flex justify-content-between align-items-center">
-            <span>{{ p['nombre'] }} ({{ p['usuario'] }})</span>
-            <button class="btn btn-danger btn-sm delete-provider" data-id="{{ p['id'] }}">Eliminar</button>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
+    <!-- PESTAÑA GESTIÓN DE USUARIOS -->
+    <div class="tab-pane fade" id="gestion" role="tabpanel">
+      <p>Aquí se podrán eliminar o editar proveedores (pendiente de implementación de botones y lógica).</p>
+    </div>
 
-      <!-- PESTAÑA RECORDATORIOS -->
-      <div class="tab-pane fade" id="recordatorio" role="tabpanel">
-        <h5>Enviar recordatorio a proveedores</h5>
-        <form id="formReminder">
-          <div class="mb-2">
-            <label>Selecciona proveedores:</label><br>
-            {% for p in proveedores %}
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="checkbox" name="provider_ids" value="{{ p['id'] }}">
-              <label class="form-check-label">{{ p['nombre'] }}</label>
+    <!-- PESTAÑA RECORDATORIOS -->
+    <div class="tab-pane fade" id="recordatorios" role="tabpanel">
+      <div class="card">
+        <h5>Enviar recordatorio</h5>
+        <p>Selecciona los proveedores y escribe tu mensaje:</p>
+        <form id="form-reminder">
+          {% for p in proveedores %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" value="{{ p['id'] }}" id="provider{{ p['id'] }}">
+              <label class="form-check-label" for="provider{{ p['id'] }}">{{ p['nombre'] }} ({{ p['usuario'] }})</label>
             </div>
-            {% endfor %}
+          {% endfor %}
+          <div class="mb-2 mt-2">
+            <input type="text" class="form-control" placeholder="Asunto" id="reminder_subject" required>
           </div>
           <div class="mb-2">
-            <input class="form-control" name="subject" placeholder="Asunto" required>
-          </div>
-          <div class="mb-2">
-            <textarea class="form-control" name="message" placeholder="Mensaje" rows="4" required></textarea>
+            <textarea class="form-control" id="reminder_message" placeholder="Mensaje..." rows="4" required></textarea>
           </div>
           <button type="submit" class="btn btn-primary">Enviar recordatorio</button>
         </form>
-        <div id="reminderResult" class="mt-2"></div>
+        <div id="reminder_status" class="mt-2"></div>
       </div>
     </div>
-
-    <a href="{{ url_for('logout') }}" class="btn logout-btn mt-3">Cerrar sesión</a>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-    // DELETE PROVIDER
-    $('.delete-provider').click(function(){
-      let pid = $(this).data('id');
-      let pwd = prompt('Ingresa tu contraseña para confirmar:');
-      if(pwd){
-        $.ajax({
-          url: '/admin/delete_provider',
-          method: 'POST',
-          contentType: 'application/json',
-          data: JSON.stringify({provider_id: pid, password: pwd}),
-          success: function(res){
-            alert('Proveedor eliminado');
-            location.reload();
-          }
-        });
+  <a href="{{ url_for('logout') }}" class="btn logout-btn mt-3">Cerrar sesión</a>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  $('#form-reminder').on('submit', function(e){
+    e.preventDefault();
+    let provider_ids = [];
+    $('#form-reminder input[type=checkbox]:checked').each(function(){ provider_ids.push($(this).val()); });
+    let subject = $('#reminder_subject').val();
+    let message = $('#reminder_message').val();
+    $.ajax({
+      url: "{{ url_for('send_reminder') }}",
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({provider_ids, subject, message}),
+      success: function(res){
+        $('#reminder_status').text('Recordatorio enviado a ' + res.sent + ' proveedores.');
+      },
+      error: function(){
+        $('#reminder_status').text('Error al enviar recordatorio.');
       }
     });
-
-    // ENVIAR RECORDATORIO
-    $('#formReminder').submit(function(e){
-      e.preventDefault();
-      let data = {
-        provider_ids: $(this).find('input[name="provider_ids"]:checked').map(function(){ return $(this).val(); }).get(),
-        subject: $(this).find('input[name="subject"]').val(),
-        message: $(this).find('textarea[name="message"]').val()
-      };
-      $.ajax({
-        url: '/admin/send_reminder',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify(data),
-        success: function(res){
-          $('#reminderResult').text('Recordatorio enviado a ' + res.sent + ' proveedores.');
-          $('#formReminder')[0].reset();
-        }
-      });
-    });
-  </script>
+  });
+</script>
 </body>
 </html>

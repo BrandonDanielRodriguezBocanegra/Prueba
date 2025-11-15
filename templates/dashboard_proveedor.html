@@ -12,90 +12,66 @@
       color: #fff;
       min-height: 100vh;
     }
-    @keyframes gradientShift {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-    .card {
-      background: rgba(255,255,255,0.95);
-      color: #333;
-      border-radius: 10px;
-      padding: 20px;
-      margin-bottom: 20px;
-    }
+    @keyframes gradientShift { 0% { background-position:0% 50%; } 50% { background-position:100% 50%; } 100% { background-position:0% 50%; } }
+    .card { background: rgba(255,255,255,0.95); color: #333; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
     .table th { background-color: #ff6a00; color: white; }
-    .btn-upload {
-      background-color: #ff6a00;
-      color: #fff;
-      border: none;
-      transition: all 0.3s ease;
-    }
-    .btn-upload:hover {
-      background-color: #ff007b;
-    }
-    .logout-btn {
-      background-color: rgba(255,255,255,0.2);
-      color: #fff;
-      border: 1px solid #fff;
-      transition: all 0.3s ease;
-    }
-    .logout-btn:hover {
-      background-color: #fff;
-      color: #6600ff;
-      border-color: #fff;
-    }
+    .btn-create { margin-bottom: 15px; }
   </style>
 </head>
 <body>
-  <div class="container mt-4">
-    <h3 class="text-white mb-4">Dashboard Proveedor</h3>
+<div class="container mt-4">
+  <h3 class="text-white mb-4">Dashboard Proveedor</h3>
 
-    {% if mensaje %}
-      <div class="alert alert-success">{{ mensaje }}</div>
-    {% endif %}
+  {% if mensaje %}<div class="alert alert-success">{{ mensaje }}</div>{% endif %}
 
-    {% for project in projects %}
-      <div class="card">
-        <h5>Proyecto: {{ project['name'] }}</h5>
-        <p><strong>Fecha de creación:</strong> {{ project['created_at'] }}</p>
-
-        <form method="POST" enctype="multipart/form-data" action="{{ url_for('upload_document', project_id=project['id']) }}">
-          <table class="table table-bordered">
-            <thead>
-              <tr>
-                <th>Documento</th>
-                <th>Archivo</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for doc in DOCUMENTOS_OBLIGATORIOS %}
-              <tr>
-                <td>{{ doc }}</td>
-                <td>
-                  <input type="file" name="documento" {% if documentos_subidos.get(project['id'], {}).get(doc) %} disabled {% endif %}>
-                  <input type="hidden" name="tipo_documento" value="{{ doc }}">
-                </td>
-                <td>
-                  {% if documentos_subidos.get(project['id'], {}).get(doc) %}
-                    ✅ {{ documentos_subidos[project['id']][doc]['nombre_archivo'] }}
-                  {% else %}
-                    ❌ Pendiente
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-          <button type="submit" class="btn btn-upload">Subir Documento</button>
-        </form>
+  <!-- CREAR PROYECTO -->
+  <div class="card">
+    <h5>Crear nuevo proyecto</h5>
+    <form method="POST">
+      <input type="hidden" name="action" value="create_project">
+      <div class="mb-2">
+        <input type="text" name="project_name" class="form-control" placeholder="Nombre del proyecto" required>
       </div>
-    {% else %}
-      <p>No tienes proyectos creados.</p>
-    {% endfor %}
-
-    <a href="{{ url_for('logout') }}" class="btn logout-btn mt-2">Cerrar sesión</a>
+      <button type="submit" class="btn btn-primary btn-create">Crear proyecto</button>
+    </form>
   </div>
+
+  <!-- LISTA DE PROYECTOS -->
+  {% for p in projects %}
+  <div class="card">
+    <h5>{{ p['name'] }} - {{ p['created_at'] }}</h5>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="upload_doc">
+      <input type="hidden" name="project_id" value="{{ p['id'] }}">
+      <table class="table table-bordered">
+        <thead><tr><th>Documento</th><th>Archivo</th><th>Estado</th></tr></thead>
+        <tbody>
+          {% for doc in DOCUMENTOS_OBLIGATORIOS %}
+          <tr>
+            <td>{{ doc }}</td>
+            <td>
+              <input type="file" name="documento" {% if documentos_subidos[p['id']].get(doc) %} disabled {% endif %}>
+              <input type="hidden" name="tipo_documento" value="{{ doc }}">
+            </td>
+            <td>
+              {% if documentos_subidos[p['id']].get(doc) %}
+                ✅ {{ documentos_subidos[p['id']][doc]['nombre_archivo'] }}
+              {% else %}
+                ❌ Pendiente
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button type="submit" class="btn btn-success">Subir Documento</button>
+    </form>
+  </div>
+  {% else %}
+  <p>No tienes proyectos creados.</p>
+  {% endfor %}
+
+  <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary mt-2">Cerrar sesión</a>
+</div>
 </body>
 </html>

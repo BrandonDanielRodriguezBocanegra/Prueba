@@ -1,3 +1,4 @@
+# app.py
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, jsonify
 import sqlite3
 import os
@@ -75,8 +76,8 @@ def registro():
         return redirect(url_for('login'))
     return render_template('registro.html')
 
-# --- ADMIN DASHBOARD ---
-@app.route('/admin/dashboard', methods=['GET','POST'])
+# --- DASHBOARD ADMIN ---
+@app.route('/admin/dashboard')
 def dashboard_admin():
     if 'usuario' not in session or session.get('rol') != 1:
         flash('Acceso denegado')
@@ -87,13 +88,9 @@ def dashboard_admin():
     proveedores = conn.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2").fetchall()
     projects = conn.execute('SELECT * FROM projects ORDER BY created_at DESC').fetchall()
 
-    # Build proyectos por proveedor
-    proyectos_por_proveedor = {}
+    # Documentos agrupados por proveedor y proyecto
     documentos_por_usuario = {}
     for p in proveedores:
-        user_projects = conn.execute('SELECT * FROM projects WHERE provider_id=? ORDER BY created_at DESC', (p['id'],)).fetchall()
-        proyectos_por_proveedor[p['id']] = user_projects
-        # documentos por proyecto
         docs = conn.execute('SELECT * FROM documentos WHERE usuario_id=?', (p['id'],)).fetchall()
         by_project = {}
         for d in docs:
@@ -104,17 +101,31 @@ def dashboard_admin():
     return render_template('dashboard_admin.html',
                            pendientes=pendientes,
                            proveedores=proveedores,
-                           proyectos_por_proveedor=proyectos_por_proveedor,
                            documentos_por_usuario=documentos_por_usuario,
                            DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
                            projects=projects)
+
+# --- APROBAR / RECHAZAR USUARIOS ---
+@app.route('/accion/<int:id>/<accion>')
+def accion(id, accion):
+    if 'usuario' not in session or session.get('rol') != 1:
+        flash('Acceso denegado')
+        return redirect(url_for('login'))
+    estado = 'aprobado' if accion == 'aprobar' else 'rechazado'
+    conn = get_db()
+    if accion == 'aprobar':
+        conn.execute('UPDATE usuarios SET estado=? WHERE id=?', (estado, id))
+    else:
+        conn.execute('DELETE FROM usuarios WHERE id=?', (id,))
+    conn.commit()
+    flash('Operación realizada.')
+    return redirect(url_for('dashboard_admin'))
 
 # --- ADMIN: enviar recordatorio ---
 @app.route('/admin/send_reminder', methods=['POST'])
 def send_reminder():
     if 'usuario' not in session or session.get('rol') != 1:
         return jsonify({'success': False, 'message': 'Acceso denegado'}), 403
-
     data = request.json
     provider_ids = data.get('provider_ids', [])
     subject = data.get('subject', 'Recordatorio de documentos REPSE')
@@ -127,7 +138,6 @@ def send_reminder():
         if u:
             recipients.append({'email': u['correo'], 'name': u['nombre']})
 
-    # enviar correos
     sent = 0
     for r in recipients:
         try:
@@ -153,7 +163,6 @@ def dashboard_proveedor():
         return redirect(url_for('login'))
 
     mensaje = ''
-
     # Crear proyecto
     if request.method == 'POST' and request.form.get('action') == 'create_project':
         name = request.form.get('project_name')
@@ -163,7 +172,7 @@ def dashboard_proveedor():
             flash('Proyecto creado.')
             return redirect(url_for('dashboard_proveedor'))
 
-    # Subir documento
+    # Subir documento vinculado a proyecto
     if request.method == 'POST' and request.form.get('action') == 'upload_doc':
         project_id = int(request.form.get('project_id'))
         tipo = request.form.get('tipo_documento')
@@ -181,13 +190,12 @@ def dashboard_proveedor():
                 conn.commit()
                 mensaje = 'Documento subido correctamente.'
 
-    # Obtener proyectos y documentos
     projects = conn.execute('SELECT * FROM projects WHERE provider_id=? ORDER BY created_at DESC', (user['id'],)).fetchall()
     docs = conn.execute('SELECT * FROM documentos WHERE usuario_id=?', (user['id'],)).fetchall()
     docs_by_project = {}
     for d in docs:
         pid = d['project_id'] or 0
-        docs_by_project.setdefault(pid, []).append(d)
+        docs_by_project.setdefault(pid, {})[d['tipo_documento']] = {'nombre_archivo': d['nombre_archivo'], 'ruta': d['ruta']}
 
     return render_template('dashboard_proveedor.html',
                            mensaje=mensaje,
@@ -195,10 +203,37 @@ def dashboard_proveedor():
                            docs_by_project=docs_by_project,
                            DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
 
-# --- DESCARGA ---
+# --- DESCARGAR DOCUMENTOS ---
 @app.route('/uploads/<filename>')
 def descargar(filename):
     return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
+
+# --- ELIMINAR PROVEEDOR ---
+@app.route('/admin/delete_provider', methods=['POST'])
+def delete_provider():
+    if 'usuario' not in session or session.get('rol') != 1:
+        return jsonify({'success': False, 'message': 'Acceso denegado'}), 403
+
+    data = request.json
+    provider_id = data.get('provider_id')
+    password = data.get('password')
+
+    conn = get_db()
+    admin = conn.execute('SELECT * FROM usuarios WHERE usuario=?', (session['usuario'],)).fetchone()
+    if not check_password_hash(admin['password'], password):
+        return jsonify({'success': False, 'message': 'Contraseña incorrecta'}), 401
+
+    docs = conn.execute('SELECT ruta FROM documentos WHERE usuario_id=?', (provider_id,)).fetchall()
+    for d in docs:
+        try:
+            os.remove(os.path.join(UPLOAD_FOLDER, d['ruta']))
+        except Exception:
+            pass
+    conn.execute('DELETE FROM documentos WHERE usuario_id=?', (provider_id,))
+    conn.execute('DELETE FROM projects WHERE provider_id=?', (provider_id,))
+    conn.execute('DELETE FROM usuarios WHERE id=?', (provider_id,))
+    conn.commit()
+    return jsonify({'success': True})
 
 # --- LOGOUT ---
 @app.route('/logout')
@@ -207,6 +242,7 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
+    # ensure DB exists
     if not os.path.exists(DB_NAME):
         try:
             import init_db

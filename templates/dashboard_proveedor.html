@@ -10,6 +10,7 @@
       background-size: 300% 300%;
       animation: gradientShift 10s ease infinite;
       color: #fff;
+      min-height: 100vh;
     }
     @keyframes gradientShift {
       0% { background-position: 0% 50%; }
@@ -24,64 +25,77 @@
       margin-bottom: 20px;
     }
     .table th { background-color: #ff6a00; color: white; }
+    .btn-upload {
+      background-color: #ff6a00;
+      color: #fff;
+      border: none;
+      transition: all 0.3s ease;
+    }
+    .btn-upload:hover {
+      background-color: #ff007b;
+    }
+    .logout-btn {
+      background-color: rgba(255,255,255,0.2);
+      color: #fff;
+      border: 1px solid #fff;
+      transition: all 0.3s ease;
+    }
+    .logout-btn:hover {
+      background-color: #fff;
+      color: #6600ff;
+      border-color: #fff;
+    }
   </style>
 </head>
 <body>
   <div class="container mt-4">
+    <h3 class="text-white mb-4">Dashboard Proveedor</h3>
 
-    <!-- CREAR NUEVO PROYECTO -->
-    <div class="card">
-      <h4>Crear Proyecto</h4>
-      <form method="POST">
-        <input type="hidden" name="action" value="create_project">
-        <div class="input-group mb-2">
-          <input type="text" class="form-control" name="project_name" placeholder="Nombre del proyecto" required>
-          <button class="btn btn-primary" type="submit">Crear</button>
-        </div>
-      </form>
-    </div>
+    {% if mensaje %}
+      <div class="alert alert-success">{{ mensaje }}</div>
+    {% endif %}
 
     {% for project in projects %}
-    <div class="card">
-      <h5>{{ project['name'] }} (Creado: {{ project['created_at'] }})</h5>
-      {% if mensaje and request.form.get('project_id') == str(project['id']) %}
-        <div class="alert alert-success">{{ mensaje }}</div>
-      {% endif %}
-      <form method="POST" enctype="multipart/form-data">
-        <input type="hidden" name="action" value="upload_doc">
-        <input type="hidden" name="project_id" value="{{ project['id'] }}">
-        <table class="table table-bordered">
-          <thead>
-            <tr><th>Documento</th><th>Archivo</th><th>Estado</th></tr>
-          </thead>
-          <tbody>
-            {% for doc in DOCUMENTOS_OBLIGATORIOS %}
-            <tr>
-              <td>{{ doc }}</td>
-              <td>
-                <input type="file" name="documento" {% if docs_by_project.get(project['id']) and docs_by_project[project['id']]|selectattr('tipo_documento','equalto',doc)|list %} disabled {% endif %}>
-                <input type="hidden" name="tipo_documento" value="{{ doc }}">
-              </td>
-              <td>
-                {% set uploaded = docs_by_project.get(project['id'])|selectattr('tipo_documento','equalto',doc)|list %}
-                {% if uploaded %}
-                  ✅ {{ uploaded[0]['nombre_archivo'] }}
-                {% else %}
-                  ❌ Pendiente
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <button type="submit" class="btn btn-primary">Subir Documento</button>
-      </form>
-    </div>
+      <div class="card">
+        <h5>Proyecto: {{ project['name'] }}</h5>
+        <p><strong>Fecha de creación:</strong> {{ project['created_at'] }}</p>
+
+        <form method="POST" enctype="multipart/form-data" action="{{ url_for('upload_document', project_id=project['id']) }}">
+          <table class="table table-bordered">
+            <thead>
+              <tr>
+                <th>Documento</th>
+                <th>Archivo</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for doc in DOCUMENTOS_OBLIGATORIOS %}
+              <tr>
+                <td>{{ doc }}</td>
+                <td>
+                  <input type="file" name="documento" {% if documentos_subidos.get(project['id'], {}).get(doc) %} disabled {% endif %}>
+                  <input type="hidden" name="tipo_documento" value="{{ doc }}">
+                </td>
+                <td>
+                  {% if documentos_subidos.get(project['id'], {}).get(doc) %}
+                    ✅ {{ documentos_subidos[project['id']][doc]['nombre_archivo'] }}
+                  {% else %}
+                    ❌ Pendiente
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <button type="submit" class="btn btn-upload">Subir Documento</button>
+        </form>
+      </div>
     {% else %}
-      <p class="text-white">No hay proyectos creados.</p>
+      <p>No tienes proyectos creados.</p>
     {% endfor %}
 
-    <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary mt-2">Cerrar sesión</a>
+    <a href="{{ url_for('logout') }}" class="btn logout-btn mt-2">Cerrar sesión</a>
   </div>
 </body>
 </html>

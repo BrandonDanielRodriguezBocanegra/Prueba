@@ -1,14 +1,12 @@
 # init_db.py
-import sqlite3, os
+import sqlite3
 from werkzeug.security import generate_password_hash
 
 DB_NAME = 'repse_system.db'
-
-# Conectar o crear la DB
 conn = sqlite3.connect(DB_NAME)
 c = conn.cursor()
 
-# Tabla usuarios
+# tabla usuarios
 c.execute('''
 CREATE TABLE IF NOT EXISTS usuarios(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,41 +19,38 @@ CREATE TABLE IF NOT EXISTS usuarios(
 )
 ''')
 
-# Tabla projects
+# tabla proyectos
 c.execute('''
 CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     provider_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    completed INTEGER DEFAULT 0,
     FOREIGN KEY(provider_id) REFERENCES usuarios(id)
 )
 ''')
 
-# Tabla documentos
+# tabla documentos
 c.execute('''
 CREATE TABLE IF NOT EXISTS documentos(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     usuario_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
     nombre_archivo TEXT NOT NULL,
     ruta TEXT NOT NULL,
-    fecha_subida TEXT NOT NULL,
     tipo_documento TEXT,
-    project_id INTEGER,
+    fecha_subida TEXT NOT NULL,
     FOREIGN KEY(usuario_id) REFERENCES usuarios(id),
     FOREIGN KEY(project_id) REFERENCES projects(id)
 )
 ''')
 
-# Crear admin si no existe
+# crear admin si no existe
 c.execute("SELECT * FROM usuarios WHERE usuario='admin'")
 if not c.fetchone():
     password_hash = generate_password_hash('admin123')
-    c.execute(
-        "INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(?,?,?,?,?,?)",
-        ('Administrador Principal', 'admin', 'admin@empresa.com', password_hash, 1, 'aprobado')
-    )
+    c.execute("INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(?,?,?,?,?,?)",
+              ('Administrador Principal', 'admin', 'admin@empresa.com', password_hash, 1, 'aprobado'))
 
 conn.commit()
 conn.close()

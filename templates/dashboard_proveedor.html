@@ -1,82 +1,87 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Proveedor – REPSE</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <meta charset="UTF-8">
+  <title>Proveedor - REPSE</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(135deg, #ff6a00, #ff007b, #6600ff);
+      background-size: 300% 300%;
+      animation: gradientShift 10s ease infinite;
+      color: #fff;
+    }
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .card {
+      background: rgba(255,255,255,0.95);
+      color: #333;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .table th { background-color: #ff6a00; color: white; }
+  </style>
 </head>
-
 <body>
-<div class="container mt-4">
+  <div class="container mt-4">
 
-    <h2>Panel del Proveedor</h2>
-    <a href="/logout" class="btn btn-danger mb-3">Cerrar sesión</a>
-
-    {% if mensaje %}
-        <div class="alert alert-info">{{ mensaje }}</div>
-    {% endif %}
-
-    <!-- CREAR PROYECTO -->
-    <div class="card mb-4">
-        <div class="card-header">Crear proyecto</div>
-        <div class="card-body">
-
-            <form method="POST">
-                <input type="hidden" name="action" value="create_project">
-
-                <label class="form-label">Nombre del proyecto:</label>
-                <input type="text" name="project_name" class="form-control mb-3" required>
-
-                <button class="btn btn-success">Crear</button>
-            </form>
-
+    <!-- CREAR NUEVO PROYECTO -->
+    <div class="card">
+      <h4>Crear Proyecto</h4>
+      <form method="POST">
+        <input type="hidden" name="action" value="create_project">
+        <div class="input-group mb-2">
+          <input type="text" class="form-control" name="project_name" placeholder="Nombre del proyecto" required>
+          <button class="btn btn-primary" type="submit">Crear</button>
         </div>
+      </form>
     </div>
 
-    <!-- PROYECTOS -->
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white">Mis Proyectos</div>
-        <div class="card-body">
-
-            {% if projects %}
-                {% for p in projects %}
-                    <div class="border rounded p-3 mb-3">
-                        <h5>{{ p.name }} <small class="text-muted">({{ p.created_at }})</small></h5>
-
-                        <strong>Documentos:</strong>
-                        <ul>
-                            {% for d in docs_by_project[p.id] %}
-                            <li>
-                                <a href="/uploads/{{ d.ruta }}" target="_blank">{{ d.nombre_archivo }}</a>
-                            </li>
-                            {% endfor %}
-                        </ul>
-
-                        <!-- SUBIR DOCUMENTO -->
-                        <form method="POST" enctype="multipart/form-data" class="mt-3">
-                            <input type="hidden" name="action" value="upload_doc">
-                            <input type="hidden" name="project_id" value="{{ p.id }}">
-
-                            <label>Tipo de documento:</label>
-                            <select name="tipo_documento" class="form-control mb-2" required>
-                                {% for t in DOCUMENTOS_OBLIGATORIOS %}
-                                    <option>{{ t }}</option>
-                                {% endfor %}
-                            </select>
-
-                            <input type="file" name="documento" class="form-control mb-2" required>
-
-                            <button class="btn btn-secondary">Subir documento</button>
-                        </form>
-                    </div>
-                {% endfor %}
-            {% else %}
-                <p>No tienes proyectos creados aún.</p>
-            {% endif %}
-
-        </div>
+    {% for project in projects %}
+    <div class="card">
+      <h5>{{ project['name'] }} (Creado: {{ project['created_at'] }})</h5>
+      {% if mensaje and request.form.get('project_id') == str(project['id']) %}
+        <div class="alert alert-success">{{ mensaje }}</div>
+      {% endif %}
+      <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="upload_doc">
+        <input type="hidden" name="project_id" value="{{ project['id'] }}">
+        <table class="table table-bordered">
+          <thead>
+            <tr><th>Documento</th><th>Archivo</th><th>Estado</th></tr>
+          </thead>
+          <tbody>
+            {% for doc in DOCUMENTOS_OBLIGATORIOS %}
+            <tr>
+              <td>{{ doc }}</td>
+              <td>
+                <input type="file" name="documento" {% if docs_by_project.get(project['id']) and docs_by_project[project['id']]|selectattr('tipo_documento','equalto',doc)|list %} disabled {% endif %}>
+                <input type="hidden" name="tipo_documento" value="{{ doc }}">
+              </td>
+              <td>
+                {% set uploaded = docs_by_project.get(project['id'])|selectattr('tipo_documento','equalto',doc)|list %}
+                {% if uploaded %}
+                  ✅ {{ uploaded[0]['nombre_archivo'] }}
+                {% else %}
+                  ❌ Pendiente
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button type="submit" class="btn btn-primary">Subir Documento</button>
+      </form>
     </div>
+    {% else %}
+      <p class="text-white">No hay proyectos creados.</p>
+    {% endfor %}
 
-</div>
+    <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary mt-2">Cerrar sesión</a>
+  </div>
 </body>
 </html>

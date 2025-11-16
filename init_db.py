@@ -46,15 +46,37 @@ CREATE TABLE IF NOT EXISTS documentos(
 )
 ''')
 
-# Crear admin si no existe
-c.execute("SELECT * FROM usuarios WHERE usuario='admin'")
-if not c.fetchone():
-    password_hash = generate_password_hash('admin123')
-    c.execute(
-        "INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(%s,%s,%s,%s,%s,%s)",
-        ('Administrador Principal', 'admin', 'admin@empresa.com', password_hash, 1, 'aprobado')
-    )
+# ============================================================
+# CREAR ADMIN SI NO EXISTE — CÓDIGO COMPLETO Y ROBUSTO
+# ============================================================
+print("Verificando existencia del usuario administrador...")
+
+c.execute("SELECT * FROM usuarios WHERE usuario = %s", ('admin',))
+admin = c.fetchone()
+
+if not admin:
+    password_hash = generate_password_hash("admin123")
+
+    c.execute("""
+        INSERT INTO usuarios (nombre, usuario, correo, password, rol, estado)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (
+        "Administrador Principal",
+        "admin",
+        "admin@empresa.com",
+        password_hash,
+        1,                # Administrador
+        "aprobado"
+    ))
+
+    print(">>> Usuario admin creado correctamente")
+    print(">>> Usuario: admin")
+    print(">>> Password: admin123")
+else:
+    print(">>> El usuario admin ya existe")
 
 conn.commit()
+c.close()
 conn.close()
-print("DB initialized/updated.")
+
+print("Base de datos inicializada correctamente.")

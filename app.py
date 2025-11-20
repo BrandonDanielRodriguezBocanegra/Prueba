@@ -167,6 +167,7 @@ def dashboard_admin():
         projects=projects
     )
 
+# ----------------------- APROBAR / RECHAZAR -----------------------
 @app.route('/admin/accion/<int:id>/<accion>')
 def accion(id, accion):
     if 'usuario' not in session or session.get('rol') != 1:
@@ -185,6 +186,25 @@ def accion(id, accion):
 
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
+
+# ----------------------- ELIMINAR USUARIO DESDE GESTIÓN (NUEVO) -----------------------
+@app.route('/admin/delete_user', methods=['POST'])
+def delete_user():
+    if 'usuario' not in session or session.get('rol') != 1:
+        return jsonify({'success': False, 'msg': 'Acceso denegado'})
+
+    data = request.get_json()
+    user_id = data.get('id')
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({'success': True, 'msg': 'Usuario eliminado'})
 
 # ---------- AJAX Reminder ----------
 @app.route('/admin/send_reminder', methods=['POST'])
@@ -319,42 +339,6 @@ def dashboard_proveedor():
 @app.route('/uploads/<path:filename>')
 def descargar(filename):
     return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
-
-# ----------------------- DELETE PROVIDER -----------------------
-@app.route('/admin/delete_provider', methods=['POST'])
-def delete_provider():
-    if 'usuario' not in session or session.get('rol') != 1:
-        return jsonify({'success': False}), 403
-
-    data = request.get_json()
-    provider_id = data.get('provider_id')
-    password = data.get('password')
-
-    conn = get_conn()
-    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-
-    cur.execute("SELECT * FROM usuarios WHERE usuario=%s", (session['usuario'],))
-    admin = cur.fetchone()
-
-    if not admin or not check_password_hash(admin['password'], password):
-        return jsonify({'success': False, 'message': 'Contraseña incorrecta'}), 401
-
-    cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (provider_id,))
-    rows = cur.fetchall()
-    for r in rows:
-        try:
-            os.remove(os.path.join(UPLOAD_FOLDER, r['ruta']))
-        except:
-            pass
-
-    cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (provider_id,))
-    cur.execute("DELETE FROM projects WHERE provider_id=%s", (provider_id,))
-    cur.execute("DELETE FROM usuarios WHERE id=%s", (provider_id,))
-    conn.commit()
-
-    cur.close()
-    conn.close()
-    return jsonify({'success': True})
 
 # ----------------------- RUN -----------------------
 if __name__ == '__main__':

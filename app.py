@@ -187,7 +187,7 @@ def accion(id, accion):
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
 
-# ----------------------- ELIMINAR USUARIO DESDE GESTIÓN (NUEVO) -----------------------
+# ----------------------- ELIMINAR USUARIO DESDE GESTIÓN (MODIFICADO) -----------------------
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -196,15 +196,25 @@ def delete_user():
     data = request.get_json()
     user_id = data.get('id')
 
+    # No permitir al admin borrar su propia cuenta
+    if user_id == session['user_id']:
+        return jsonify({'success': False, 'msg': 'No puedes borrar tu propia cuenta'})
+
     conn = get_conn()
     cur = conn.cursor()
 
+    # Borrar documentos
+    cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
+    # Borrar proyectos asociados
+    cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
+    # Borrar cuenta
     cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
+
     conn.commit()
     cur.close()
     conn.close()
 
-    return jsonify({'success': True, 'msg': 'Usuario eliminado'})
+    return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
 
 # ---------- AJAX Reminder ----------
 @app.route('/admin/send_reminder', methods=['POST'])

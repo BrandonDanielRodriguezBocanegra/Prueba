@@ -179,6 +179,7 @@ def accion(id, accion):
     return redirect(url_for('dashboard_admin'))
 
 # DELETE USER
+
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -191,9 +192,21 @@ def delete_user():
         return jsonify({'success': False, 'msg': 'No puedes borrar tu propia cuenta'})
 
     conn = get_conn()
-    cur = conn.cursor()
+    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    cur.execute("DELETE FROM documents WHERE usuario_id=%s", (user_id,))
+    # Obtener documentos del usuario para borrarlos del bucket
+    cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
+    docs = cur.fetchall()
+
+    # Borrar documentos en S3
+    for d in docs:
+        try:
+            s3.delete_object(Bucket=BUCKET_NAME, Key=d['ruta'])
+        except Exception as e:
+            print("Error eliminando archivo S3:", e)
+
+    # Borrar registros en BD
+    cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
     cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
     cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
 
@@ -201,8 +214,7 @@ def delete_user():
     cur.close()
     conn.close()
 
-    return jsonify({'success': True, 'msg': 'Usuario eliminado'})
-
+    return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
 
 # ---------- AJAX Reminder ----------
 @app.route('/admin/send_reminder', methods=['POST'], endpoint='send_reminder')

@@ -56,7 +56,6 @@
             background-color: transparent !important;
         }
 
-
         .logout-btn {
             background-color: rgba(255,255,255,0.2);
             color: #fff;
@@ -71,6 +70,9 @@
         }
 
         .container { padding-bottom: 30px; }
+
+        /* filtro */
+        .filter-card { margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -113,8 +115,20 @@
 
         <!-- PESTAÑA PROVEEDORES -->
         <div class="tab-pane fade show active" id="proveedores" role="tabpanel">
+
+            <!-- FILTRO -->
+            <div class="card filter-card">
+                <label class="form-label fw-bold">Filtrar proveedores (selecciona uno o varios):</label>
+                <select id="filtroProveedores" class="form-select" multiple>
+                    {% for p in proveedores %}
+                    <option value="{{ p['id'] }}">{{ p['nombre'] }} ({{ p['usuario'] }})</option>
+                    {% endfor %}
+                </select>
+                <div class="small-muted mt-1">Deja vacío para ver todos.</div>
+            </div>
+
             {% for p in proveedores %}
-            <div class="card proveedor-card mb-3">
+            <div class="card proveedor-card mb-3" data-id="{{ p['id'] }}">
                 <h5>{{ p['nombre'] }} ({{ p['usuario'] }})</h5>
                 {% set docs_by_user = documentos_por_usuario[p['id']] %}
                 {% for project in projects %}
@@ -133,15 +147,23 @@
                                     {% for d in docs_by_user[project['id']] %}
                                         {% if d['tipo_documento'] == doc %}
                                             {{ d['nombre_archivo'] }}
+                                            <div class="mt-1">
+                                                <a href="{{ url_for('descargar', filename=d['ruta']) }}" class="btn btn-sm btn-primary">Descargar</a>
+                                            </div>
                                         {% endif %}
                                     {% endfor %}
                                 {% else %}-{% endif %}
                             </td>
                             <td>
                                 {% if docs_by_user.get(project['id']) %}
+                                    {% set found=false %}
                                     {% for d in docs_by_user[project['id']] %}
-                                        {% if d['tipo_documento'] == doc %}✅{% endif %}
+                                        {% if d['tipo_documento'] == doc %}
+                                            ✅
+                                            {% set found=true %}
+                                        {% endif %}
                                     {% endfor %}
+                                    {% if not found %}❌{% endif %}
                                 {% else %}❌{% endif %}
                             </td>
                         </tr>
@@ -306,6 +328,21 @@ $(document).ready(function() {
                 alert('Error al eliminar usuario.');
             }
         });
+    });
+});
+
+// FILTRO DE PROVEEDORES (multiselección)
+document.getElementById("filtroProveedores").addEventListener("change", function() {
+    let seleccionados = Array.from(this.selectedOptions).map(o => o.value);
+
+    document.querySelectorAll(".proveedor-card").forEach(card => {
+        let id = card.getAttribute("data-id");
+
+        if (seleccionados.length === 0 || seleccionados.includes(id)) {
+            card.style.display = "block";
+        } else {
+            card.style.display = "none";
+        }
     });
 });
 </script>

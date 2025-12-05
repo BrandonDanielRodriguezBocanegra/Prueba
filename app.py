@@ -55,6 +55,16 @@ def send_email_via_smtp(remitente, remitente_password, destinatarios, asunto, me
         smtp.login(remitente, remitente_password)
         smtp.send_message(msg)
 
+def safe_remove_file(filename):
+    """Eliminar archivo del disco si existe (silencioso)."""
+    try:
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        # no queremos romper la app por errores de filesystem
+        pass
+
 # ----------------------- LOGIN -----------------------
 @app.route('/', methods=['GET','POST'])
 def login():
@@ -203,6 +213,15 @@ def delete_user():
     conn = get_conn()
     cur = conn.cursor()
 
+    # Borrar archivos físicos relacionados con esos documentos primero
+    cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
+    rows = cur.fetchall()
+    for r in rows:
+        try:
+            safe_remove_file(r[0])
+        except Exception:
+            pass
+
     # Borrar documentos
     cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
     # Borrar proyectos asociados
@@ -286,35 +305,64 @@ def dashboard_proveedor():
         return redirect(url_for('login'))
 
     if request.method == 'POST':
+        # Crear proyecto
         if request.form.get('action') == 'create_project':
             name = request.form.get('project_name')
             cur.execute("INSERT INTO projects(provider_id, name, created_at) VALUES(%s,%s,NOW())",
                         (user['id'], name))
             conn.commit()
             flash('Proyecto creado.')
+            cur.close()
+            conn.close()
             return redirect(url_for('dashboard_proveedor'))
 
+        # Subir / Reemplazar documento
         if request.form.get('action') == 'upload_doc':
             project_id = int(request.form.get('project_id'))
             tipo = request.form.get('tipo_documento')
             archivo = request.files.get('documento')
 
-            if archivo and archivo.filename != '':
+            if not tipo:
+                flash('Selecciona el tipo de documento.')
+            elif archivo and archivo.filename != '':
                 ext = archivo.filename.rsplit('.', 1)[-1].lower()
                 if ext not in ['pdf', 'jpg', 'jpeg', 'png']:
                     flash('Tipo de archivo no permitido.')
                 else:
+                    # generar nombre único en servidor
                     filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{archivo.filename}"
                     path = os.path.join(UPLOAD_FOLDER, filename)
                     archivo.save(path)
 
+                    # verificar si ya existe un documento del mismo tipo para este proyecto y usuario
                     cur.execute("""
-                        INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
-                        VALUES(%s,%s,%s,%s,NOW(),%s)
-                    """, (user['id'], archivo.filename, filename, tipo, project_id))
+                        SELECT id, ruta FROM documentos
+                        WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
+                        """, (user['id'], project_id, tipo))
+                    existing = cur.fetchone()
+
+                    if existing:
+                        # eliminar archivo viejo del disco (silencioso) y actualizar fila
+                        try:
+                            safe_remove_file(existing['ruta'])
+                        except Exception:
+                            pass
+                        cur.execute("""
+                            UPDATE documentos
+                            SET nombre_archivo=%s, ruta=%s, fecha_subida=NOW()
+                            WHERE id=%s
+                        """, (archivo.filename, filename, existing['id']))
+                    else:
+                        # insertar nuevo registro
+                        cur.execute("""
+                            INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
+                            VALUES(%s,%s,%s,%s,NOW(),%s)
+                        """, (user['id'], archivo.filename, filename, tipo, project_id))
+
                     conn.commit()
                     flash('Documento subido correctamente.')
 
+    # obtener proyectos y documentos
     cur.execute("SELECT * FROM projects WHERE provider_id=%s ORDER BY created_at DESC", (user['id'],))
     projects = cur.fetchall()
 
@@ -324,18 +372,21 @@ def dashboard_proveedor():
     cur.close()
     conn.close()
 
+    # organizar docs por proyecto
     docs_by_project = {}
     for d in docs:
         pid = d['project_id'] or 0
         docs_by_project.setdefault(pid, []).append(d)
 
+    # mantener estructura de un solo documento por tipo (reemplazable)
     documentos_subidos = {}
     for p in projects:
         documentos_subidos[p['id']] = {}
-        for doc in DOCUMENTOS_OBLIGATORIOS:
-            for d in docs_by_project.get(p['id'], []):
-                if d['tipo_documento'] == doc:
-                    documentos_subidos[p['id']][doc] = d
+        for d in docs_by_project.get(p['id'], []):
+            tipo = d['tipo_documento']
+            # si hay varios, se queda el más reciente (por fecha_subida DESC en consulta)
+            if tipo not in documentos_subidos[p['id']]:
+                documentos_subidos[p['id']][tipo] = d
 
     return render_template(
         'dashboard_proveedor.html',
@@ -344,6 +395,39 @@ def dashboard_proveedor():
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
         documentos_subidos=documentos_subidos
     )
+
+# ----------------------- ELIMINAR DOCUMENTO (PROVEEDOR) -----------------------
+@app.route('/proveedor/delete_doc', methods=['POST'])
+def delete_doc():
+    if 'usuario' not in session or session.get('rol') != 2:
+        return jsonify({'success': False, 'msg': 'Acceso denegado'}), 403
+
+    data = request.get_json() or {}
+    doc_id = data.get('doc_id')
+    if not doc_id:
+        return jsonify({'success': False, 'msg': 'Falta doc_id'}), 400
+
+    conn = get_conn()
+    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+
+    # verificar que el documento pertenezca al usuario
+    cur.execute("SELECT * FROM documentos WHERE id=%s", (doc_id,))
+    doc = cur.fetchone()
+    if not doc or doc['usuario_id'] != session['user_id']:
+        cur.close()
+        conn.close()
+        return jsonify({'success': False, 'msg': 'Documento no encontrado o no autorizado'}), 403
+
+    # eliminar archivo físico
+    safe_remove_file(doc['ruta'])
+
+    # eliminar fila
+    cur.execute("DELETE FROM documentos WHERE id=%s", (doc_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({'success': True, 'msg': 'Documento eliminado'})
 
 # ----------------------- DESCARGA -----------------------
 @app.route('/uploads/<path:filename>')
@@ -355,7 +439,6 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ('1', 'true')
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
-
 
 
 # ----------------------- fin -----------------------

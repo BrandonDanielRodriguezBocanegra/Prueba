@@ -15,7 +15,7 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 def get_conn():
     return psycopg.connect(DATABASE_URL)
 
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION")
 S3_BUCKET = os.getenv("AWS_BUCKET_NAME")

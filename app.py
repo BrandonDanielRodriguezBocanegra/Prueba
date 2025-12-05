@@ -203,6 +203,45 @@ def delete_user():
 
     return jsonify({'success': True, 'msg': 'Usuario eliminado'})
 
+
+# ---------- AJAX Reminder ----------
+@app.route('/admin/send_reminder', methods=['POST'], endpoint='send_reminder')
+def send_reminder():
+    if 'usuario' not in session or session.get('rol') != 1:
+        return jsonify({'success': False, 'message': 'Acceso denegado'}), 403
+
+    data = request.get_json() or {}
+    provider_ids = data.get('provider_ids', [])
+    subject = data.get('subject', 'Recordatorio REPSE')
+    message = data.get('message', '')
+
+    if not provider_ids:
+        return jsonify({'success': False, 'message': 'No providers selected'}), 400
+
+    conn = get_conn()
+    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+
+    recipients = []
+    for pid in provider_ids:
+        cur.execute("SELECT correo FROM usuarios WHERE id=%s", (pid,))
+        row = cur.fetchone()
+        if row:
+            recipients.append(row['correo'])
+
+    cur.execute("SELECT correo, mail_password FROM usuarios WHERE usuario=%s", (session['usuario'],))
+    admin = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    # AQUI puedes usar tus credenciales SMTP reales si configuras correo
+    # De momento envío solo un mensaje simulado
+    sent = len(recipients)
+
+    return jsonify({'success': True, 'sent': sent})
+
+
+
+
 # ========== PROVEEDOR DASHBOARD ==========
 @app.route('/proveedor/dashboard', methods=['GET','POST'])
 def dashboard_proveedor():

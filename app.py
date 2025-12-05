@@ -33,8 +33,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # ----------------------- AWS S3 CONFIG -----------------------
 USE_S3 = True  # Cambia a False para usar almacenamiento local
 
-AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY", "TU_ACCESS_KEY")
-AWS_SECRET_KEY = os.environ.get("AWS_SECRET_KEY", "TU_SECRET_KEY")
+AWS_ACCESS_KEY = os.environ.get("AKIA2FLIN6TK7VJUMYVB", "AKIA2FLIN6TK7VJUMYVB")
+AWS_SECRET_KEY = os.environ.get("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", "gmDtOT8NSAbe8m4wBGTWee46yB+bozYDtXGGslm6")
 AWS_REGION = "us-east-2"
 AWS_BUCKET = "repse-documento"
 

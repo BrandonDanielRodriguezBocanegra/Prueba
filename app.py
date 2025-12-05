@@ -1,36 +1,34 @@
 # app.py
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import psycopg
 import psycopg.rows
 import psycopg.errors
-import smtplib
-from email.message import EmailMessage
+import boto3
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'supersecretkey')
 
-# ---------- DATABASE CONFIG ----------
 DATABASE_URL = os.environ.get(
-    'DATABASE_URL',
-    'postgresql://repse_db_user:DdWJ7DrHXlVnC96eAxxnqNgbjTgFGS0f@dpg-d4c15c6r433s73d7o3dg-a.oregon-postgres.render.com/repse_db'
+    'DATABASE_URL'
 )
 
 def get_conn():
     return psycopg.connect(DATABASE_URL)
 
-# ---------- UPLOAD CONFIG ----------
-BASE_DIR = os.getcwd()
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# ---------- AWS CONFIG ----------
+AWS_REGION = os.environ.get('AWS_REGION', 'us-east-2')
+BUCKET_NAME = os.environ.get('AWS_BUCKET_NAME', 'repse-documento')
 
-# ---------- MAIL FALLBACK ----------
-FALLBACK_MAIL_USER = os.environ.get('MAIL_USERNAME')
-FALLBACK_MAIL_PASS = os.environ.get('MAIL_PASSWORD')
+s3 = boto3.client(
+    's3',
+    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+    region_name=AWS_REGION
+)
 
-# ---------- CONSTANTS ----------
 DOCUMENTOS_OBLIGATORIOS = [
     "Cédula fiscal",
     "Identificación oficial",
@@ -41,21 +39,7 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
-# ---------- HELPERS ----------
-def send_email_via_smtp(remitente, remitente_password, destinatarios, asunto, mensaje,
-                        smtp_server='smtp.office365.com', smtp_port=587):
-    msg = EmailMessage()
-    msg['From'] = remitente
-    msg['To'] = ', '.join(destinatarios)
-    msg['Subject'] = asunto
-    msg.set_content(mensaje)
-
-    with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as smtp:
-        smtp.starttls()
-        smtp.login(remitente, remitente_password)
-        smtp.send_message(msg)
-
-# ----------------------- LOGIN -----------------------
+# ========== LOGIN ==========
 @app.route('/', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
@@ -87,7 +71,7 @@ def login():
 
     return render_template('login.html')
 
-# ----------------------- REGISTRO -----------------------
+# ========== REGISTRO ==========
 @app.route('/registro', methods=['GET','POST'])
 def registro():
     if request.method == 'POST':
@@ -96,6 +80,7 @@ def registro():
         correo = request.form.get('correo')
         contrasena = request.form.get('contrasena')
         rol = int(request.form.get('rol') or 2)
+
         password_hash = generate_password_hash(contrasena)
 
         conn = get_conn()
@@ -111,9 +96,6 @@ def registro():
         except psycopg.errors.UniqueViolation:
             conn.rollback()
             flash('El usuario ya existe.')
-        except Exception as e:
-            conn.rollback()
-            flash('Error en el registro: ' + str(e))
         finally:
             cur.close()
             conn.close()
@@ -125,7 +107,17 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# ----------------------- ADMIN DASHBOARD -----------------------
+# ========== ADMIN DASHBOARD ==========
+def get_presigned_url(filename):
+    try:
+        return s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': BUCKET_NAME, 'Key': filename},
+            ExpiresIn=300
+        )
+    except:
+        return None
+
 @app.route('/admin/dashboard')
 def dashboard_admin():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -144,30 +136,27 @@ def dashboard_admin():
     cur.execute("SELECT * FROM projects ORDER BY created_at DESC")
     projects = cur.fetchall()
 
-    documentos_por_usuario = {}
-
-    for p in proveedores:
-        cur.execute("SELECT * FROM documentos WHERE usuario_id=%s ORDER BY fecha_subida DESC", (p['id'],))
-        docs = cur.fetchall()
-        by_project = {}
-        for d in docs:
-            pid = d['project_id'] or 0
-            by_project.setdefault(pid, []).append(d)
-        documentos_por_usuario[p['id']] = by_project
+    cur.execute("SELECT * FROM documentos ORDER BY fecha_subida DESC")
+    docs = cur.fetchall()
 
     cur.close()
     conn.close()
+
+    docs_by_user = {}
+    for d in docs:
+        docs_by_user.setdefault(d['usuario_id'], {}).setdefault(d['project_id'], []).append(d)
 
     return render_template(
         'dashboard_admin.html',
         pendientes=pendientes,
         proveedores=proveedores,
-        documentos_por_usuario=documentos_por_usuario,
+        proyectos=projects,
+        documentos_por_usuario=docs_by_user,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
-        projects=projects
+        get_presigned_url=get_presigned_url
     )
 
-# ----------------------- APROBAR / RECHAZAR -----------------------
+# APROBAR / RECHAZAR
 @app.route('/admin/accion/<int:id>/<accion>')
 def accion(id, accion):
     if 'usuario' not in session or session.get('rol') != 1:
@@ -176,10 +165,12 @@ def accion(id, accion):
 
     conn = get_conn()
     cur = conn.cursor()
+
     if accion == 'aprobar':
         cur.execute("UPDATE usuarios SET estado='aprobado' WHERE id=%s", (id,))
     else:
         cur.execute("DELETE FROM usuarios WHERE id=%s", (id,))
+
     conn.commit()
     cur.close()
     conn.close()
@@ -187,7 +178,7 @@ def accion(id, accion):
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
 
-# ----------------------- ELIMINAR USUARIO DESDE GESTIÓN (MODIFICADO) -----------------------
+# DELETE USER
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -196,79 +187,23 @@ def delete_user():
     data = request.get_json()
     user_id = data.get('id')
 
-    # No permitir al admin borrar su propia cuenta
     if user_id == session['user_id']:
         return jsonify({'success': False, 'msg': 'No puedes borrar tu propia cuenta'})
 
     conn = get_conn()
     cur = conn.cursor()
 
-    # Borrar documentos
-    cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
-    # Borrar proyectos asociados
+    cur.execute("DELETE FROM documents WHERE usuario_id=%s", (user_id,))
     cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
-    # Borrar cuenta
     cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
+    return jsonify({'success': True, 'msg': 'Usuario eliminado'})
 
-# ---------- AJAX Reminder ----------
-@app.route('/admin/send_reminder', methods=['POST'])
-def send_reminder():
-    if 'usuario' not in session or session.get('rol') != 1:
-        return jsonify({'success': False, 'message': 'Acceso denegado'}), 403
-
-    data = request.get_json() or {}
-    provider_ids = data.get('provider_ids', [])
-    subject = data.get('subject', 'Recordatorio REPSE')
-    message = data.get('message', '')
-
-    if not provider_ids:
-        return jsonify({'success': False, 'message': 'No providers selected'}), 400
-
-    conn = get_conn()
-    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-
-    recipients = []
-    for pid in provider_ids:
-        cur.execute("SELECT correo FROM usuarios WHERE id=%s", (pid,))
-        row = cur.fetchone()
-        if row:
-            recipients.append(row['correo'])
-
-    cur.execute("SELECT correo, mail_password FROM usuarios WHERE usuario=%s", (session['usuario'],))
-    admin = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    if admin and admin['mail_password']:
-        mail_user = admin['correo']
-        mail_pass = admin['mail_password']
-    else:
-        mail_user = FALLBACK_MAIL_USER
-        mail_pass = FALLBACK_MAIL_PASS
-
-    if not mail_user or not mail_pass:
-        return jsonify({'success': False, 'message': 'No hay credenciales de correo configuradas'}), 400
-
-    sent = 0
-    errors = []
-
-    for r in recipients:
-        try:
-            send_email_via_smtp(mail_user, mail_pass, [r], subject, message)
-            sent += 1
-        except Exception as e:
-            errors.append({'to': r, 'error': str(e)})
-
-    return jsonify({'success': True, 'sent': sent, 'errors': errors})
-
-
-# ----------------------- PROVEEDOR DASHBOARD -----------------------
+# ========== PROVEEDOR DASHBOARD ==========
 @app.route('/proveedor/dashboard', methods=['GET','POST'])
 def dashboard_proveedor():
     if 'usuario' not in session or session.get('rol') != 2:
@@ -277,21 +212,17 @@ def dashboard_proveedor():
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-
     cur.execute("SELECT * FROM usuarios WHERE usuario=%s", (session['usuario'],))
     user = cur.fetchone()
 
-    if not user or user['estado'] != 'aprobado':
-        flash('Tu cuenta aún no ha sido aprobada.')
-        return redirect(url_for('login'))
-
     if request.method == 'POST':
+
         if request.form.get('action') == 'create_project':
             name = request.form.get('project_name')
             cur.execute("INSERT INTO projects(provider_id, name, created_at) VALUES(%s,%s,NOW())",
                         (user['id'], name))
             conn.commit()
-            flash('Proyecto creado.')
+            flash("Proyecto creado.")
             return redirect(url_for('dashboard_proveedor'))
 
         if request.form.get('action') == 'upload_doc':
@@ -301,19 +232,24 @@ def dashboard_proveedor():
 
             if archivo and archivo.filename != '':
                 ext = archivo.filename.rsplit('.', 1)[-1].lower()
-                if ext not in ['pdf', 'jpg', 'jpeg', 'png']:
-                    flash('Tipo de archivo no permitido.')
+                if ext not in ['pdf','jpg','jpeg','png']:
+                    flash("Tipo de archivo no permitido.")
                 else:
-                    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{archivo.filename}"
-                    path = os.path.join(UPLOAD_FOLDER, filename)
-                    archivo.save(path)
+                    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{archivo.filename}"
+
+                    s3.upload_fileobj(
+                        archivo,
+                        BUCKET_NAME,
+                        filename,
+                        ExtraArgs={'ACL':'private'}
+                    )
 
                     cur.execute("""
-                        INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
+                        INSERT INTO documentos(usuario_id,nombre_archivo,ruta,tipo_documento,fecha_subida,project_id)
                         VALUES(%s,%s,%s,%s,NOW(),%s)
                     """, (user['id'], archivo.filename, filename, tipo, project_id))
                     conn.commit()
-                    flash('Documento subido correctamente.')
+                    flash("Documento subido correctamente.")
 
     cur.execute("SELECT * FROM projects WHERE provider_id=%s ORDER BY created_at DESC", (user['id'],))
     projects = cur.fetchall()
@@ -326,36 +262,23 @@ def dashboard_proveedor():
 
     docs_by_project = {}
     for d in docs:
-        pid = d['project_id'] or 0
-        docs_by_project.setdefault(pid, []).append(d)
+        docs_by_project.setdefault(d['project_id'], []).append(d)
 
     documentos_subidos = {}
     for p in projects:
         documentos_subidos[p['id']] = {}
         for doc in DOCUMENTOS_OBLIGATORIOS:
             for d in docs_by_project.get(p['id'], []):
-                if d['tipo_documento'] == doc:
+                if d['tipo_documento']==doc:
                     documentos_subidos[p['id']][doc] = d
 
     return render_template(
         'dashboard_proveedor.html',
         projects=projects,
-        docs_by_project=docs_by_project,
-        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
-        documentos_subidos=documentos_subidos
+        documentos_subidos=documentos_subidos,
+        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS
     )
 
-# ----------------------- DESCARGA -----------------------
-@app.route('/uploads/<path:filename>')
-def descargar(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
-# ----------------------- RUN -----------------------
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ('1', 'true')
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
-
-
-
-# ----------------------- fin -----------------------
+    app.run()

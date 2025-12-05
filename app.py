@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone
 import psycopg
@@ -10,25 +10,32 @@ from botocore.exceptions import NoCredentialsError
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'supersecretkey')
 
-# ---------- DATABASE ----------
+# ----------------------------------
+# DATABASE
+# ----------------------------------
 DATABASE_URL = os.environ.get('DATABASE_URL')
+
 def get_conn():
     return psycopg.connect(DATABASE_URL)
 
-# ---------- AWS S3 CONFIG ----------
-AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
+# ----------------------------------
+# AWS S3 CONFIG CORREGIDA
+# ----------------------------------
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")  # CORREGIDO
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION")
 S3_BUCKET = os.getenv("AWS_S3_BUCKET_NAME")
 
 s3 = boto3.client(
     "s3",
-    aws_access_key_id=AWS_ACCESS_KEY,
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
     aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
     region_name=AWS_REGION
 )
 
-# ---------- DOCUMENTOS OBLIGATORIOS ----------
+# ----------------------------------
+# DOCUMENTOS OBLIGATORIOS
+# ----------------------------------
 DOCUMENTOS_OBLIGATORIOS = [
     "Cédula fiscal",
     "Identificación oficial",
@@ -41,7 +48,7 @@ DOCUMENTOS_OBLIGATORIOS = [
 
 
 # ======================================================
-# LOGIN (NO se modificó nada)
+# LOGIN
 # ======================================================
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -57,7 +64,6 @@ def login():
         conn.close()
 
         if user and check_password_hash(user['password'], contrasena):
-
             if user['estado'] == 'pendiente':
                 flash('Tu cuenta está pendiente de aprobación.')
                 return redirect(url_for('login'))
@@ -76,7 +82,7 @@ def login():
 
 
 # ======================================================
-# REGISTRO (NO se modificó nada)
+# REGISTRO
 # ======================================================
 @app.route('/registro', methods=['GET', 'POST'])
 def registro():
@@ -95,9 +101,9 @@ def registro():
             cur.execute("""
                 INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado)
                 VALUES(%s,%s,%s,%s,%s,%s)
-            """, (nombre, usuario, correo, password_hash, rol, "aprobado"))
+            """, (nombre, usuario, correo, password_hash, rol, "pendiente"))
             conn.commit()
-            flash('Registro exitoso.')
+            flash('Registro exitoso. Espera aprobación.')
             return redirect(url_for('login'))
         except Exception as e:
             conn.rollback()
@@ -109,7 +115,6 @@ def registro():
     return render_template('registro.html')
 
 
-# ======================================================
 @app.route('/logout')
 def logout():
     session.clear()
@@ -117,7 +122,7 @@ def logout():
 
 
 # ======================================================
-# DASHBOARD ADMIN COMPLETO
+# DASHBOARD ADMIN
 # ======================================================
 @app.route('/admin/dashboard')
 def dashboard_admin():
@@ -127,41 +132,41 @@ def dashboard_admin():
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
+    # proveedores aprobados
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2")
     proveedores = cur.fetchall()
 
+    # pendientes
     cur.execute("SELECT * FROM usuarios WHERE estado='pendiente'")
     pendientes = cur.fetchall()
 
+    # proyectos
     cur.execute("SELECT * FROM projects")
     projects = cur.fetchall()
 
-    cur.execute("""
-        SELECT d.*, u.nombre AS proveedor_nombre, p.name AS project_name
-        FROM documentos d
-        JOIN usuarios u ON d.usuario_id = u.id
-        JOIN projects p ON d.project_id = p.id
-    """)
-    documentos = cur.fetchall()
+    # documentos
+    cur.execute("SELECT * FROM documentos")
+    docs = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    # Mapear documentos por proveedor y proyecto
-    docs_map = {}
-    for d in documentos:
-        docs_map.setdefault(d['usuario_id'], {}).setdefault(d['project_id'], []).append(d)
+    docs_by_user = {}
+    for d in docs:
+        docs_by_user.setdefault(d['usuario_id'], {})
+        docs_by_user[d['usuario_id']].setdefault(d['project_id'], []).append(d)
 
     return render_template('dashboard_admin.html',
                            proveedores=proveedores,
                            pendientes=pendientes,
                            projects=projects,
-                           documentos_por_usuario=docs_map,
-                           DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS)
+                           documentos_por_usuario=docs_by_user,
+                           DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
+                           S3_BUCKET=S3_BUCKET)
 
 
 # ======================================================
-# DASHBOARD PROVEEDOR (Sube/Reemplaza)
+# DASHBOARD PROVEEDOR
 # ======================================================
 @app.route('/proveedor/dashboard', methods=['GET', 'POST'])
 def dashboard_proveedor():
@@ -181,10 +186,10 @@ def dashboard_proveedor():
 
         if file:
             filename = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{file.filename}"
-
             try:
                 s3.upload_fileobj(file, S3_BUCKET, filename)
 
+                # borrar archivo previo si existía
                 cur.execute("""SELECT ruta FROM documentos
                                WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s""",
                             (user['id'], project_id, tipo_doc))
@@ -195,14 +200,15 @@ def dashboard_proveedor():
                     except:
                         pass
 
-                cur.execute("DELETE FROM documentos WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s",
-                            (user['id'], project_id, tipo_doc))
+                cur.execute("""
+                    DELETE FROM documentos
+                    WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
+                """, (user['id'], project_id, tipo_doc))
 
                 cur.execute("""
                     INSERT INTO documentos(usuario_id, nombre_archivo, ruta, fecha_subida, tipo_documento, project_id)
                     VALUES(%s,%s,%s,NOW(),%s,%s)
                 """, (user['id'], file.filename, filename, tipo_doc, project_id))
-
                 conn.commit()
                 flash("Documento actualizado correctamente.")
 
@@ -229,7 +235,7 @@ def dashboard_proveedor():
 
 
 # ======================================================
-# DESCARGA ADMIN DESDE S3
+# DESCARGA ADMIN
 # ======================================================
 @app.route('/admin/download/<ruta>')
 def admin_download(ruta):
@@ -245,24 +251,50 @@ def admin_download(ruta):
 
 
 # ======================================================
-# BORRAR USUARIO (solo admin)
+# APROBAR / RECHAZAR USUARIO
 # ======================================================
-@app.route('/admin/delete_user/<int:id>')
-def delete_user(id):
-    if 'usuario' not in session or session.get('rol') != 1:
+@app.route('/admin/accion/<int:id>/<accion>')
+def accion(id, accion):
+    if session.get('rol') != 1:
         return redirect(url_for('login'))
 
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM usuarios WHERE id=%s", (id,))
+
+    if accion == "aprobar":
+        cur.execute("UPDATE usuarios SET estado='aprobado' WHERE id=%s", (id,))
+    else:
+        cur.execute("DELETE FROM usuarios WHERE id=%s", (id,))
+
     conn.commit()
     cur.close()
     conn.close()
 
-    flash("Usuario eliminado correctamente.")
     return redirect(url_for('dashboard_admin'))
 
 
 # ======================================================
+# ELIMINAR USUARIO POR AJAX
+# ======================================================
+@app.route('/delete_user', methods=['POST'])
+def delete_user():
+    if session.get('rol') != 1:
+        return jsonify({"success": False, "msg": "Sin permisos"})
+
+    data = request.get_json()
+    user_id = data.get("id")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({"success": True, "msg": "Usuario eliminado"})
+
+
+# ======================================================
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT',5000)))
+    app.run(debug=True)

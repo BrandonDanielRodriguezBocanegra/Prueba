@@ -26,6 +26,10 @@ BASE_DIR = os.getcwd()
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# ---------- MAIL FALLBACK ----------
+FALLBACK_MAIL_USER = os.environ.get('MAIL_USERNAME')
+FALLBACK_MAIL_PASS = os.environ.get('MAIL_PASSWORD')
+
 # ---------- CONSTANTS ----------
 DOCUMENTOS_OBLIGATORIOS = [
     "Cédula fiscal",
@@ -36,6 +40,20 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Comprobantes de nómina",
     "Documentación de capacitación"
 ]
+
+# ----------------------- HELPERS -----------------------
+def send_email_via_smtp(remitente, remitente_password, destinatarios, asunto, mensaje,
+                        smtp_server='smtp.office365.com', smtp_port=587):
+    msg = EmailMessage()
+    msg['From'] = remitente
+    msg['To'] = ', '.join(destinatarios)
+    msg['Subject'] = asunto
+    msg.set_content(mensaje)
+
+    with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as smtp:
+        smtp.starttls()
+        smtp.login(remitente, remitente_password)
+        smtp.send_message(msg)
 
 # ----------------------- LOGIN -----------------------
 @app.route('/', methods=['GET','POST'])
@@ -76,29 +94,68 @@ def logout():
     return redirect(url_for('login'))
 
 
+# ----------------------- REGISTRO -----------------------
+@app.route('/registro', methods=['GET','POST'])
+def registro():
+    if request.method == 'POST':
+        nombre = request.form.get('nombre')
+        usuario = request.form.get('usuario')
+        correo = request.form.get('correo')
+        contrasena = request.form.get('contrasena')
+        rol = int(request.form.get('rol') or 2)
+        password_hash = generate_password_hash(contrasena)
+
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                'INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(%s,%s,%s,%s,%s,%s)',
+                (nombre, usuario, correo, password_hash, rol, 'pendiente')
+            )
+            conn.commit()
+            flash('Registro exitoso. Espera aprobación del administrador.')
+            return redirect(url_for('login'))
+        except psycopg.errors.UniqueViolation:
+            conn.rollback()
+            flash('El usuario ya existe.')
+        except Exception as e:
+            conn.rollback()
+            flash('Error en el registro: ' + str(e))
+        finally:
+            cur.close()
+            conn.close()
+
+    return render_template('registro.html')
+
+
 # ----------------------- ADMIN DASHBOARD -----------------------
-@app.route('/admin/dashboard', methods=["GET", "POST"])
+@app.route('/admin/dashboard', methods=['GET'])
 def dashboard_admin():
     if 'usuario' not in session or session.get('rol') != 1:
         flash('Acceso denegado')
         return redirect(url_for('login'))
 
+    selected = request.args.getlist("proveedores")
+
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-
-    selected = request.args.getlist("proveedores")
 
     cur.execute("SELECT * FROM usuarios WHERE estado='pendiente'")
     pendientes = cur.fetchall()
 
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2")
-    proveedores = cur.fetchall()
+    proveedores_all = cur.fetchall()
+    proveedores = proveedores_all
+
+    if selected:
+        proveedores = [p for p in proveedores_all if str(p['id']) in selected]
 
     cur.execute("SELECT * FROM projects ORDER BY created_at DESC")
     projects = cur.fetchall()
 
     documentos_por_usuario = {}
-    for p in proveedores:
+
+    for p in proveedores_all:
         cur.execute("SELECT * FROM documentos WHERE usuario_id=%s ORDER BY fecha_subida DESC", (p['id'],))
         docs = cur.fetchall()
         by_project = {}
@@ -110,18 +167,16 @@ def dashboard_admin():
     cur.close()
     conn.close()
 
-    if selected:
-        proveedores = [p for p in proveedores if str(p['id']) in selected]
-
     return render_template(
         'dashboard_admin.html',
         pendientes=pendientes,
         proveedores=proveedores,
+        proveedores_all=proveedores_all,
         documentos_por_usuario=documentos_por_usuario,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
-        projects=projects,
-        proveedores_all=proveedores
+        projects=projects
     )
+
 
 # ----------------------- APROBAR / RECHAZAR -----------------------
 @app.route('/admin/accion/<int:id>/<accion>')
@@ -142,6 +197,87 @@ def accion(id, accion):
 
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
+
+
+# ----------------------- ELIMINAR USUARIO (GESTIÓN) -----------------------
+@app.route('/admin/delete_user', methods=['POST'])
+def delete_user():
+    if 'usuario' not in session or session.get('rol') != 1:
+        return jsonify({'success': False, 'msg': 'Acceso denegado'})
+
+    data = request.get_json()
+    user_id = data.get('id')
+
+    if user_id == session['user_id']:
+        return jsonify({'success': False, 'msg': 'No puedes borrar tu propia cuenta'})
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
+    docs = cur.fetchall()
+    for d in docs:
+        path = os.path.join(UPLOAD_FOLDER, d[0])
+        if os.path.exists(path):
+            os.remove(path)
+
+    cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
+    cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
+    cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
+
+
+# ----------------------- AJAX Reminder -----------------------
+@app.route('/admin/send_reminder', methods=['POST'])
+def send_reminder():
+    if 'usuario' not in session or session.get('rol') != 1:
+        return jsonify({'success': False, 'message': 'Acceso denegado'}), 403
+
+    data = request.get_json() or {}
+    provider_ids = data.get('provider_ids', [])
+    subject = data.get('subject', 'Recordatorio REPSE')
+    message = data.get('message', '')
+
+    if not provider_ids:
+        return jsonify({'success': False, 'message': 'No providers selected'}), 400
+
+    conn = get_conn()
+    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+
+    recipients = []
+    for pid in provider_ids:
+        cur.execute("SELECT correo FROM usuarios WHERE id=%s", (pid,))
+        row = cur.fetchone()
+        if row:
+            recipients.append(row['correo'])
+
+    cur.execute("SELECT correo, mail_password FROM usuarios WHERE usuario=%s", (session['usuario'],))
+    admin = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    mail_user = admin['correo'] if admin and admin['mail_password'] else FALLBACK_MAIL_USER
+    mail_pass = admin['mail_password'] if admin and admin['mail_password'] else FALLBACK_MAIL_PASS
+
+    if not mail_user or not mail_pass:
+        return jsonify({'success': False, 'message': 'No hay credenciales de correo configuradas'}), 400
+
+    sent = 0
+    errors = []
+
+    for r in recipients:
+        try:
+            send_email_via_smtp(mail_user, mail_pass, [r], subject, message)
+            sent += 1
+        except Exception as e:
+            errors.append({'to': r, 'error': str(e)})
+
+    return jsonify({'success': True, 'sent': sent, 'errors': errors})
 
 
 # ----------------------- PROVEEDOR DASHBOARD -----------------------

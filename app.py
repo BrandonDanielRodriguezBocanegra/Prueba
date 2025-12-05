@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone
 import psycopg
@@ -95,13 +95,14 @@ def registro():
             """, (nombre, usuario, correo, password_hash, rol, "aprobado"))
             conn.commit()
             flash('Registro exitoso.')
-            return redirect(url_for('login'))
         except Exception as e:
             conn.rollback()
             flash("Error: " + str(e))
         finally:
             cur.close()
             conn.close()
+
+        return redirect(url_for('login'))
 
     return render_template('registro.html')
 
@@ -111,7 +112,7 @@ def logout():
     return redirect(url_for('login'))
 
 # ======================================================
-# DASHBOARD ADMIN
+# DASHBOARD ADMIN – reparación completa
 # ======================================================
 @app.route('/admin/dashboard')
 def dashboard_admin():
@@ -121,29 +122,48 @@ def dashboard_admin():
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
+    # Usuarios aprobados
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2")
     proveedores = cur.fetchall()
 
+    # Documentos con info de proyecto
     cur.execute("""
-        SELECT d.*, u.nombre AS proveedor_nombre, p.name AS project_name
+        SELECT d.*, p.name AS project_name
         FROM documentos d
-        JOIN usuarios u ON d.usuario_id = u.id
-        JOIN projects p ON d.project_id = p.id
+        LEFT JOIN projects p ON d.project_id = p.id
         ORDER BY d.fecha_subida DESC
     """)
-    documentos = cur.fetchall()
+    docs = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    return render_template('dashboard_admin.html',
-                           proveedores=proveedores,
-                           DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
-                           documentos=documentos,
-                           S3_BUCKET=S3_BUCKET)
+    # Organizar documentos por usuario → proyecto
+    documentos_por_usuario = {}
+    proyectos = {}
+
+    for d in docs:
+        uid = d['usuario_id']
+        pid = d['project_id']
+        pname = d['project_name'] or "Sin proyecto"
+
+        documentos_por_usuario.setdefault(uid, {})
+        documentos_por_usuario[uid].setdefault(pid, [])
+
+        documentos_por_usuario[uid][pid].append(d)
+        proyectos[pid] = pname
+
+    return render_template(
+        'dashboard_admin.html',
+        proveedores=proveedores,
+        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
+        documentos_por_usuario=documentos_por_usuario,
+        proyectos=proyectos,
+        S3_BUCKET=S3_BUCKET
+    )
 
 # ======================================================
-# DASHBOARD PROVEEDOR (SUBIR / REEMPLAZAR)
+# DASHBOARD PROVEEDOR – subir y reemplazar documento
 # ======================================================
 @app.route('/proveedor/dashboard', methods=['GET', 'POST'])
 def dashboard_proveedor():
@@ -158,42 +178,46 @@ def dashboard_proveedor():
 
     if request.method == 'POST':
         project_id = request.form.get('project_id')
-        tipo_doc = request.form.get('tipo_documento')
+        tipo = request.form.get('tipo_documento')
         file = request.files.get('documento')
 
         if file:
             filename = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{file.filename}"
 
             try:
+                # upload new
                 s3.upload_fileobj(file, S3_BUCKET, filename)
 
-                # borrar doc previo si existía
+                # find old file
                 cur.execute("""SELECT ruta FROM documentos
                                WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s""",
-                            (user['id'], project_id, tipo_doc))
+                            (user['id'], project_id, tipo))
                 old = cur.fetchone()
+
+                # delete from S3
                 if old:
                     try:
                         s3.delete_object(Bucket=S3_BUCKET, Key=old['ruta'])
                     except:
                         pass
 
-                cur.execute("""
-                    DELETE FROM documentos
-                    WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
-                """, (user['id'], project_id, tipo_doc))
+                # delete from DB
+                cur.execute("""DELETE FROM documentos
+                               WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s""",
+                            (user['id'], project_id, tipo))
 
+                # insert new db
                 cur.execute("""
                     INSERT INTO documentos(usuario_id, nombre_archivo, ruta, fecha_subida, tipo_documento, project_id)
                     VALUES(%s,%s,%s,NOW(),%s,%s)
-                """, (user['id'], file.filename, filename, tipo_doc, project_id))
+                """, (user['id'], file.filename, filename, tipo, project_id))
                 conn.commit()
 
                 flash("Documento actualizado correctamente.")
-
             except NoCredentialsError:
                 flash("Error de credenciales AWS")
 
+    # Load data for screen
     cur.execute("SELECT * FROM projects WHERE provider_id=%s", (user['id'],))
     projects = cur.fetchall()
 
@@ -213,7 +237,7 @@ def dashboard_proveedor():
                            docs_map=docs_map)
 
 # ======================================================
-# PRESIGNED URL PARA DESCARGA
+# PRESIGNED URL PARA DESCARGA ADMIN
 # ======================================================
 @app.route('/admin/download/<ruta>')
 def admin_download(ruta):
@@ -229,4 +253,4 @@ def admin_download(ruta):
 
 # ======================================================
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

@@ -1,5 +1,6 @@
+# app.py
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import psycopg
@@ -24,11 +25,16 @@ DATABASE_URL = os.environ.get(
 def get_conn():
     return psycopg.connect(DATABASE_URL)
 
-# ----------------------- AWS S3 CONFIG -----------------------
-USE_S3 = True  # Importante → TRUE para usar S3
+# ----------------------- LOCAL UPLOAD CONFIG -----------------------
+BASE_DIR = os.getcwd()
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY", "TU_ACCESS_KEY")
-AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "TU_SECRET_KEY")
+# ----------------------- AWS S3 CONFIG -----------------------
+USE_S3 = True  # Cambia a False si quieres usar solo local
+
+AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY")
+AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 AWS_BUCKET = "repse-documento"
 
@@ -39,7 +45,7 @@ s3_client = boto3.client(
     region_name=AWS_REGION
 )
 
-# ----------------------- MAIL CONFIG -----------------------
+# ----------------------- MAIL FALLBACK -----------------------
 FALLBACK_MAIL_USER = os.environ.get('MAIL_USERNAME')
 FALLBACK_MAIL_PASS = os.environ.get('MAIL_PASSWORD')
 
@@ -54,7 +60,7 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
-# ----------------------- EMAIL HELPER -----------------------
+# ----------------------- HELPERS -----------------------
 def send_email_via_smtp(remitente, remitente_password, destinatarios, asunto, mensaje,
                         smtp_server='smtp.office365.com', smtp_port=587):
     msg = EmailMessage()
@@ -160,19 +166,12 @@ def dashboard_admin():
     documentos_por_usuario = {}
 
     for p in proveedores:
-        cur.execute("""
-            SELECT DISTINCT ON (tipo_documento)
-            id, usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id
-            FROM documentos
-            WHERE usuario_id=%s
-            ORDER BY tipo_documento, fecha_subida DESC
-        """, (p['id'],))
+        cur.execute("SELECT * FROM documentos WHERE usuario_id=%s ORDER BY fecha_subida DESC", (p['id'],))
         docs = cur.fetchall()
-
         by_project = {}
         for d in docs:
-            by_project.setdefault(d['project_id'], []).append(d)
-
+            pid = d['project_id'] or 0
+            by_project.setdefault(pid, []).append(d)
         documentos_por_usuario[p['id']] = by_project
 
     cur.close()
@@ -321,6 +320,10 @@ def dashboard_proveedor():
                 else:
                     filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{archivo.filename}"
 
+                    ruta_archivo = filename
+                    subida_S3_ok = False
+
+                    # INTENTAR SUBIR A S3
                     if USE_S3:
                         try:
                             s3_client.upload_fileobj(
@@ -329,62 +332,72 @@ def dashboard_proveedor():
                                 filename,
                                 ExtraArgs={'ACL': 'public-read'}
                             )
-                            ruta_archivo = filename
+                            subida_S3_ok = True
                         except Exception as e:
                             flash(f"Error subiendo a S3: {e}")
-                            return redirect(url_for('dashboard_proveedor'))
-                    else:
-                        flash('Modo Local no habilitado')
+
+                    # SI S3 FALLA → SUBIR LOCAL
+                    if not subida_S3_ok:
+                        local_path = os.path.join(UPLOAD_FOLDER, filename)
+                        archivo.seek(0)  # Rewind antes de guardar local
+                        archivo.save(local_path)
+                        ruta_archivo = filename
 
                     cur.execute("""
                         INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
                         VALUES(%s,%s,%s,%s,NOW(),%s)
                     """, (user['id'], archivo.filename, ruta_archivo, tipo, project_id))
                     conn.commit()
+
                     flash('Documento subido correctamente.')
+                    return redirect(url_for('dashboard_proveedor'))
 
     cur.execute("SELECT * FROM projects WHERE provider_id=%s ORDER BY created_at DESC", (user['id'],))
     projects = cur.fetchall()
 
-    cur.execute("""
-        SELECT DISTINCT ON (tipo_documento, project_id)
-        id, usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id
-        FROM documentos
-        WHERE usuario_id=%s
-        ORDER BY tipo_documento, project_id, fecha_subida DESC
-    """, (user['id'],))
+    cur.execute("SELECT * FROM documentos WHERE usuario_id=%s ORDER BY fecha_subida DESC", (user['id'],))
     docs = cur.fetchall()
 
     cur.close()
     conn.close()
 
+    docs_by_project = {}
+    for d in docs:
+        pid = d['project_id'] or 0
+        docs_by_project.setdefault(pid, []).append(d)
+
     documentos_subidos = {}
     for p in projects:
         documentos_subidos[p['id']] = {}
-        for d in docs:
-            if d['project_id'] == p['id']:
-                documentos_subidos[p['id']][d['tipo_documento']] = d
+        for doc in DOCUMENTOS_OBLIGATORIOS:
+            for d in docs_by_project.get(p['id'], []):
+                if d['tipo_documento'] == doc:
+                    documentos_subidos[p['id']][doc] = d
 
     return render_template(
         'dashboard_proveedor.html',
         projects=projects,
+        docs_by_project=docs_by_project,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
         documentos_subidos=documentos_subidos
     )
 
-# ----------------------- DESCARGA S3 -----------------------
+# ----------------------- DESCARGA -----------------------
 @app.route('/uploads/<path:filename>')
 def descargar(filename):
-    try:
-        url = s3_client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': AWS_BUCKET, 'Key': filename},
-            ExpiresIn=3600
-        )
-        return redirect(url)
-    except NoCredentialsError:
-        flash("Error con credenciales de AWS")
-        return redirect(request.referrer)
+    if USE_S3:
+        try:
+            url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': AWS_BUCKET, 'Key': filename},
+                ExpiresIn=3600
+            )
+            return redirect(url)
+        except Exception as e:
+            flash(f"Error con AWS: {e}")
+            return redirect(request.referrer)
+    else:
+        return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
 # ----------------------- RUN -----------------------
 if __name__ == '__main__':

@@ -27,7 +27,7 @@ S3_BUCKET = 'repse-documento'
 S3_REGION = 'us-east-2'
 S3 = boto3.client(
     's3',
-    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+    aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
     aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
     region_name=S3_REGION
 )

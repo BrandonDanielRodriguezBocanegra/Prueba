@@ -9,10 +9,6 @@ import psycopg.errors
 import smtplib
 from email.message import EmailMessage
 
-# AWS
-import boto3
-from botocore.exceptions import NoCredentialsError, ClientError
-
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'supersecretkey')
 
@@ -25,29 +21,10 @@ DATABASE_URL = os.environ.get(
 def get_conn():
     return psycopg.connect(DATABASE_URL)
 
-# ---------- STORAGE CONFIG ----------
-STORAGE_BACKEND = os.environ.get('STORAGE_BACKEND', 's3').lower()  # 's3' o 'local'
-USE_S3 = (STORAGE_BACKEND == 's3')
-
-# LOCAL UPLOADS
+# ---------- UPLOAD CONFIG ----------
 BASE_DIR = os.getcwd()
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# S3 CONFIG (lee claves de variables de entorno)
-AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
-AWS_REGION = os.environ.get('AWS_REGION', 'us-east-2')
-S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME') or os.environ.get('AWS_S3_BUCKET') or os.environ.get('S3_BUCKET')
-
-s3_client = None
-if USE_S3:
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-        region_name=AWS_REGION
-    )
 
 # ---------- MAIL FALLBACK ----------
 FALLBACK_MAIL_USER = os.environ.get('MAIL_USERNAME')
@@ -77,32 +54,6 @@ def send_email_via_smtp(remitente, remitente_password, destinatarios, asunto, me
         smtp.starttls()
         smtp.login(remitente, remitente_password)
         smtp.send_message(msg)
-
-def safe_remove_file_local(filename):
-    """Eliminar archivo local si existe (silencioso)."""
-    try:
-        path = os.path.join(UPLOAD_FOLDER, filename)
-        if os.path.exists(path):
-            os.remove(path)
-    except Exception:
-        pass
-
-def safe_remove_file_storage(ruta):
-    """
-    Elimina archivo según backend:
-      - S3: elimina objeto con Key=ruta
-      - local: elimina archivo en UPLOAD_FOLDER/ruta
-    """
-    if not ruta:
-        return
-    if USE_S3 and s3_client:
-        try:
-            s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=ruta)
-        except Exception:
-            # no queremos romper la app por errores de borrado remoto
-            pass
-    else:
-        safe_remove_file_local(ruta)
 
 # ----------------------- LOGIN -----------------------
 @app.route('/', methods=['GET','POST'])
@@ -236,7 +187,7 @@ def accion(id, accion):
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
 
-# ----------------------- ELIMINAR USUARIO DESDE GESTIÓN -----------------------
+# ----------------------- ELIMINAR USUARIO DESDE GESTIÓN (MODIFICADO) -----------------------
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -251,16 +202,6 @@ def delete_user():
 
     conn = get_conn()
     cur = conn.cursor()
-
-    # Borrar archivos del storage
-    cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
-    rows = cur.fetchall()
-    for r in rows:
-        try:
-            ruta = r['ruta'] if isinstance(r, dict) or hasattr(r, 'keys') else r[0]
-            safe_remove_file_storage(ruta)
-        except Exception:
-            pass
 
     # Borrar documentos
     cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
@@ -345,78 +286,35 @@ def dashboard_proveedor():
         return redirect(url_for('login'))
 
     if request.method == 'POST':
-        # Crear proyecto
         if request.form.get('action') == 'create_project':
             name = request.form.get('project_name')
             cur.execute("INSERT INTO projects(provider_id, name, created_at) VALUES(%s,%s,NOW())",
                         (user['id'], name))
             conn.commit()
             flash('Proyecto creado.')
-            cur.close()
-            conn.close()
             return redirect(url_for('dashboard_proveedor'))
 
-        # Subir / Reemplazar documento
         if request.form.get('action') == 'upload_doc':
             project_id = int(request.form.get('project_id'))
             tipo = request.form.get('tipo_documento')
             archivo = request.files.get('documento')
 
-            if not tipo:
-                flash('Selecciona el tipo de documento.')
-            elif archivo and archivo.filename != '':
+            if archivo and archivo.filename != '':
                 ext = archivo.filename.rsplit('.', 1)[-1].lower()
                 if ext not in ['pdf', 'jpg', 'jpeg', 'png']:
                     flash('Tipo de archivo no permitido.')
                 else:
                     filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{archivo.filename}"
+                    path = os.path.join(UPLOAD_FOLDER, filename)
+                    archivo.save(path)
 
-                    # Subida según backend
-                    if USE_S3 and s3_client:
-                        try:
-                            # Subir a S3 (private). Usamos 'ruta' = filename (key).
-                            s3_client.upload_fileobj(archivo, S3_BUCKET_NAME, filename, ExtraArgs={'ACL': 'private'})
-                            ruta_archivo = filename
-                        except Exception as e:
-                            flash('Error al subir a S3: ' + str(e))
-                            cur.close()
-                            conn.close()
-                            return redirect(url_for('dashboard_proveedor'))
-                    else:
-                        path = os.path.join(UPLOAD_FOLDER, filename)
-                        archivo.save(path)
-                        ruta_archivo = filename
-
-                    # verificar si ya existe un documento del mismo tipo para este proyecto y usuario
                     cur.execute("""
-                        SELECT id, ruta FROM documentos
-                        WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
-                        """, (user['id'], project_id, tipo))
-                    existing = cur.fetchone()
-
-                    if existing:
-                        # eliminar archivo viejo del storage
-                        try:
-                            safe_remove_file_storage(existing['ruta'])
-                        except Exception:
-                            pass
-                        # actualizar fila
-                        cur.execute("""
-                            UPDATE documentos
-                            SET nombre_archivo=%s, ruta=%s, fecha_subida=NOW()
-                            WHERE id=%s
-                        """, (archivo.filename, ruta_archivo, existing['id']))
-                    else:
-                        # insertar nuevo registro
-                        cur.execute("""
-                            INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
-                            VALUES(%s,%s,%s,%s,NOW(),%s)
-                        """, (user['id'], archivo.filename, ruta_archivo, tipo, project_id))
-
+                        INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
+                        VALUES(%s,%s,%s,%s,NOW(),%s)
+                    """, (user['id'], archivo.filename, filename, tipo, project_id))
                     conn.commit()
                     flash('Documento subido correctamente.')
 
-    # obtener proyectos y documentos
     cur.execute("SELECT * FROM projects WHERE provider_id=%s ORDER BY created_at DESC", (user['id'],))
     projects = cur.fetchall()
 
@@ -426,20 +324,18 @@ def dashboard_proveedor():
     cur.close()
     conn.close()
 
-    # organizar docs por proyecto
     docs_by_project = {}
     for d in docs:
         pid = d['project_id'] or 0
         docs_by_project.setdefault(pid, []).append(d)
 
-    # mantener estructura de un solo documento por tipo (reemplazable)
     documentos_subidos = {}
     for p in projects:
         documentos_subidos[p['id']] = {}
-        for d in docs_by_project.get(p['id'], []):
-            tipo = d['tipo_documento']
-            if tipo not in documentos_subidos[p['id']]:
-                documentos_subidos[p['id']][tipo] = d
+        for doc in DOCUMENTOS_OBLIGATORIOS:
+            for d in docs_by_project.get(p['id'], []):
+                if d['tipo_documento'] == doc:
+                    documentos_subidos[p['id']][doc] = d
 
     return render_template(
         'dashboard_proveedor.html',
@@ -449,85 +345,17 @@ def dashboard_proveedor():
         documentos_subidos=documentos_subidos
     )
 
-# ----------------------- ELIMINAR DOCUMENTO (PROVEEDOR) -----------------------
-@app.route('/proveedor/delete_doc', methods=['POST'])
-def delete_doc():
-    if 'usuario' not in session or session.get('rol') != 2:
-        return jsonify({'success': False, 'msg': 'Acceso denegado'}), 403
-
-    data = request.get_json() or {}
-    doc_id = data.get('doc_id')
-    if not doc_id:
-        return jsonify({'success': False, 'msg': 'Falta doc_id'}), 400
-
-    conn = get_conn()
-    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-
-    # verificar que el documento pertenezca al usuario
-    cur.execute("SELECT * FROM documentos WHERE id=%s", (doc_id,))
-    doc = cur.fetchone()
-    if not doc or doc['usuario_id'] != session['user_id']:
-        cur.close()
-        conn.close()
-        return jsonify({'success': False, 'msg': 'Documento no encontrado o no autorizado'}), 403
-
-    # eliminar del storage
-    try:
-        safe_remove_file_storage(doc['ruta'])
-    except Exception:
-        pass
-
-    # eliminar fila
-    cur.execute("DELETE FROM documentos WHERE id=%s", (doc_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return jsonify({'success': True, 'msg': 'Documento eliminado'})
-
 # ----------------------- DESCARGA -----------------------
 @app.route('/uploads/<path:filename>')
 def descargar(filename):
-    """
-    Para S3: generamos presigned URL con ResponseContentDisposition 'attachment' que fuerza descarga.
-    Para local: usamos send_from_directory con as_attachment=True.
-    """
-    if USE_S3 and s3_client:
-        # intentamos obtener nombre original para usar en disposition
-        orig_name = filename
-        try:
-            conn = get_conn()
-            cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-            cur.execute("SELECT nombre_archivo FROM documentos WHERE ruta=%s", (filename,))
-            row = cur.fetchone()
-            if row and row.get('nombre_archivo'):
-                orig_name = row['nombre_archivo']
-            cur.close()
-            conn.close()
-        except Exception:
-            pass
-
-        try:
-            url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': S3_BUCKET_NAME,
-                    'Key': filename,
-                    'ResponseContentDisposition': f'attachment; filename="{orig_name}"'
-                },
-                ExpiresIn=3600
-            )
-            return redirect(url)
-        except (NoCredentialsError, ClientError) as e:
-            flash('Error con credenciales S3 o al generar URL: ' + str(e))
-            return redirect(request.referrer or url_for('dashboard_admin'))
-    else:
-        # local
-        # si hay nombre original en BD lo podríamos incluir; send_from_directory forzará descarga
-        return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
+    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=True)
 
 # ----------------------- RUN -----------------------
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ('1', 'true')
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
+
+
+
+# ----------------------- fin -----------------------

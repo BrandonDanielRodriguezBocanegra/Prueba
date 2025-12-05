@@ -109,47 +109,66 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ---------------- DASHBOARD ADMIN ----------------
-@app.route("/admin/dashboard")
+# ----------------------- DASHBOARD ADMIN -----------------------
+@app.route('/admin/dashboard')
 def dashboard_admin():
-    if session.get("rol") != 1:
-        return redirect(url_for("login"))
+    if 'usuario' not in session or session.get('rol') != 1:
+        flash('Acceso denegado')
+        return redirect(url_for('login'))
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
+    # Usuarios pendientes
     cur.execute("SELECT * FROM usuarios WHERE estado='pendiente'")
     pendientes = cur.fetchall()
 
+    # Proveedores aprobados
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2")
     proveedores = cur.fetchall()
 
+    # Proyectos
     cur.execute("SELECT * FROM projects ORDER BY created_at DESC")
     projects = cur.fetchall()
 
+    # Último documento por tipo y proyecto
     documentos_por_usuario = {}
+
     for p in proveedores:
         cur.execute("""
-            SELECT DISTINCT ON (tipo_documento, project_id) *
-            FROM documentos WHERE usuario_id=%s
-            ORDER BY tipo_documento, fecha_subida DESC
-        """, (p["id"],))
+            SELECT d.*
+            FROM documentos d
+            JOIN (
+                SELECT MAX(fecha_subida) as max_fecha, tipo_documento, project_id
+                FROM documentos
+                WHERE usuario_id = %s
+                GROUP BY tipo_documento, project_id
+            ) ult
+            ON d.fecha_subida = ult.max_fecha
+            AND d.tipo_documento = ult.tipo_documento
+            AND d.project_id = ult.project_id
+            WHERE d.usuario_id = %s
+            ORDER BY d.project_id, d.tipo_documento
+        """, (p['id'], p['id']))
         docs = cur.fetchall()
+
         by_project = {}
         for d in docs:
-            pid = d["project_id"]
+            pid = d['project_id'] or 0
             by_project.setdefault(pid, []).append(d)
-        documentos_por_usuario[p["id"]] = by_project
+
+        documentos_por_usuario[p['id']] = by_project
 
     cur.close()
     conn.close()
 
-    return render_template("dashboard_admin.html",
+    return render_template(
+        'dashboard_admin.html',
         pendientes=pendientes,
         proveedores=proveedores,
-        projects=projects,
         documentos_por_usuario=documentos_por_usuario,
-        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS
+        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
+        projects=projects
     )
 
 

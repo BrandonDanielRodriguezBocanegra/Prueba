@@ -14,13 +14,11 @@
             color: #fff;
             min-height: 100vh;
         }
-
         @keyframes gradientShift {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
-
         .card {
             background: rgba(255,255,255,0.95);
             color: #333;
@@ -28,45 +26,13 @@
             padding: 20px;
             margin-bottom: 20px;
         }
-
-        .table th {
-            background-color: #ff6a00;
-            color: white;
-        }
-
-        .nav-tabs {
-            border-bottom: 3px solid rgba(255,255,255,0.3);
-            margin-bottom: 15px;
-        }
-
-        .nav-tabs .nav-link {
-            color: rgba(255,255,255,0.8);
-            font-weight: 500;
-            border: none;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s ease;
-        }
-
-        .nav-tabs .nav-link:hover {
-            color: #fff;
-            border-bottom: 3px solid rgba(255,255,255,0.5);
-        }
-
-        .nav-tabs .nav-link.active {
-            background-color: transparent !important;
-        }
-
+        .table th { background-color: #ff6a00; color: white; }
         .logout-btn {
             background-color: rgba(255,255,255,0.2);
             color: #fff;
             border: 1px solid #fff;
-            transition: all 0.3s ease;
         }
-
-        .logout-btn:hover {
-            background-color: #fff;
-            color: #6600ff;
-        }
+        .logout-btn:hover { background-color: #fff; color: #6600ff; }
     </style>
 </head>
 <body>
@@ -74,39 +40,31 @@
 <div class="container mt-4">
     <h3 class="text-white mb-4">Dashboard Administrador</h3>
 
-    <!-- PESTAÑAS -->
-    <ul class="nav nav-tabs" id="adminTabs" role="tablist">
-        <li class="nav-item">
-            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#proveedores" type="button">
-                Proveedores
-            </button>
-        </li>
-
-        <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pendientes" type="button">
-                Usuarios Pendientes
-            </button>
-        </li>
-
-        <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#gestion" type="button">
-                Gestión de Usuarios
-            </button>
-        </li>
-
-        <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#recordatorios" type="button">
-                Recordatorios
-            </button>
-        </li>
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#proveedores">Proveedores</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#pendientes">Usuarios Pendientes</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#gestion">Gestión de Usuarios</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#recordatorios">Recordatorios</button></li>
     </ul>
 
     <div class="tab-content">
 
-        <!-- PESTAÑA PROVEEDORES -->
+        <!-- ===================== PROVEEDORES ===================== -->
         <div class="tab-pane fade show active" id="proveedores">
-            {% for p in proveedores %}
+
+            <!-- FILTRO -->
             <div class="card mb-3">
+                <h5>Filtrar proveedores</h5>
+                <select id="filter_providers" class="form-select" multiple>
+                    {% for p in proveedores %}
+                    <option value="{{ p['id'] }}">{{ p['nombre'] }} ({{ p['usuario'] }})</option>
+                    {% endfor %}
+                </select>
+                <small class="text-white">* Mantén CTRL para seleccionar varios</small>
+            </div>
+
+            {% for p in proveedores %}
+            <div class="card proveedor-card provider-{{ p['id'] }}">
                 <h5>{{ p['nombre'] }} ({{ p['usuario'] }})</h5>
 
                 {% set docs_by_user = documentos_por_usuario.get(p['id'], {}) %}
@@ -115,9 +73,7 @@
                 <h6>Proyecto: {{ project['name'] }} - {{ project['created_at'] }}</h6>
 
                 <table class="table table-bordered">
-                    <thead>
-                        <tr><th>Documento</th><th>Archivo</th><th>Estado</th></tr>
-                    </thead>
+                    <thead><tr><th>Documento</th><th>Archivo</th><th>Estado</th></tr></thead>
                     <tbody>
                         {% for doc in DOCUMENTOS_OBLIGATORIOS %}
                         {% set docs = docs_by_user.get(project['id'], []) %}
@@ -133,28 +89,23 @@
                                 {% endfor %}
                                 {% if not encontrado %}-{% endif %}
                             </td>
-                            <td>
-                                {% if encontrado %}🟢{% else %}❌{% endif %}
-                            </td>
+                            <td>{% if encontrado %}🟢{% else %}❌{% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
                 {% endif %}
                 {% endfor %}
+
             </div>
-            {% else %}
-            <p>No hay proveedores aprobados.</p>
             {% endfor %}
         </div>
 
-        <!-- PESTAÑA PENDIENTES -->
+        <!-- ===================== PENDIENTES ===================== -->
         <div class="tab-pane fade" id="pendientes">
             {% if pendientes %}
             <table class="table table-bordered mt-3">
-                <thead>
-                    <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Acciones</th></tr>
-                </thead>
+                <thead><tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Acciones</th></tr></thead>
                 <tbody>
                     {% for p in pendientes %}
                     <tr>
@@ -170,37 +121,29 @@
                     {% endfor %}
                 </tbody>
             </table>
-            {% else %}
-            <p>No hay usuarios pendientes.</p>
             {% endif %}
         </div>
 
-        <!-- PESTAÑA GESTIÓN -->
+        <!-- ===================== GESTIÓN ===================== -->
         <div class="tab-pane fade" id="gestion">
             {% if proveedores %}
             <table class="table table-bordered table-striped">
-                <thead>
-                    <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Acciones</th></tr>
-                </thead>
+                <thead><tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Acción</th></tr></thead>
                 <tbody>
                     {% for p in proveedores %}
                     <tr id="user-row-{{ p['id'] }}">
                         <td>{{ p['nombre'] }}</td>
                         <td>{{ p['usuario'] }}</td>
                         <td>{{ p['correo'] }}</td>
-                        <td>
-                            <button class="btn btn-danger btn-sm delete-user-btn" data-id="{{ p['id'] }}">Eliminar</button>
-                        </td>
+                        <td><button class="btn btn-danger btn-sm delete-user-btn" data-id="{{ p['id'] }}">Eliminar</button></td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
-            {% else %}
-            <p>No hay proveedores aprobados.</p>
             {% endif %}
         </div>
 
-        <!-- PESTAÑA RECORDATORIOS -->
+        <!-- ===================== RECORDATORIOS ===================== -->
         <div class="tab-pane fade" id="recordatorios">
             <div class="card">
                 <h5>Enviar recordatorio</h5>
@@ -213,15 +156,14 @@
                         </label>
                     </div>
                     {% endfor %}
-
                     <input type="text" class="form-control my-2" placeholder="Asunto" id="reminder_subject">
                     <textarea class="form-control my-2" rows="3" placeholder="Mensaje..." id="reminder_message"></textarea>
-
                     <button type="submit" class="btn btn-primary">Enviar</button>
                 </form>
                 <div id="reminder_status" class="mt-2"></div>
             </div>
         </div>
+
     </div>
 
     <a href="{{ url_for('logout') }}" class="btn logout-btn mt-3">Cerrar sesión</a>
@@ -230,29 +172,17 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-$('#form-reminder').on('submit', function(e){
-    e.preventDefault();
-    let provider_ids = [];
+document.getElementById('filter_providers').addEventListener('change', function() {
+    let selected = Array.from(this.selectedOptions).map(o => o.value);
 
-    $('#form-reminder input[type=checkbox]:checked').each(function(){
-        provider_ids.push($(this).val());
-    });
+    if(selected.length === 0) {
+        document.querySelectorAll('.proveedor-card').forEach(el => el.style.display = 'block');
+        return;
+    }
 
-    $.ajax({
-        url: "{{ url_for('send_reminder') }}",
-        type: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({
-            provider_ids,
-            subject: $('#reminder_subject').val(),
-            message: $('#reminder_message').val()
-        }),
-        success: function(res){
-            $('#reminder_status').text('Recordatorio enviado a ' + res.sent + ' proveedores.');
-        },
-        error: function(){
-            $('#reminder_status').text('Error al enviar recordatorio.');
-        }
+    document.querySelectorAll('.proveedor-card').forEach(el => el.style.display = 'none');
+    selected.forEach(id => {
+        document.querySelectorAll('.provider-' + id).forEach(el => el.style.display = 'block');
     });
 });
 

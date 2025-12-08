@@ -105,8 +105,30 @@
 
         <!-- PESTAÑA PROVEEDORES -->
         <div class="tab-pane fade show active" id="proveedores">
-            {% for p in proveedores %}
+
+            <!-- FILTRO DE PROVEEDORES -->
             <div class="card mb-3">
+                <h5>Filtrar proveedores</h5>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="chk_all_providers" checked>
+                    <label class="form-check-label" for="chk_all_providers">
+                        Mostrar todos
+                    </label>
+                </div>
+
+                {% for p in proveedores %}
+                <div class="form-check">
+                    <input class="form-check-input provider-filter" type="checkbox"
+                           value="{{ p['id'] }}" id="pf{{ p['id'] }}" checked>
+                    <label class="form-check-label" for="pf{{ p['id'] }}">
+                        {{ p['nombre'] }} ({{ p['usuario'] }})
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% for p in proveedores %}
+            <div class="card mb-3 proveedor-card provider-{{ p['id'] }}">
                 <h5>{{ p['nombre'] }} ({{ p['usuario'] }})</h5>
 
                 {% set docs_by_user = documentos_por_usuario.get(p['id'], {}) %}
@@ -230,6 +252,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
+// RECORDATORIOS
 $('#form-reminder').on('submit', function(e){
     e.preventDefault();
     let provider_ids = [];
@@ -256,7 +279,7 @@ $('#form-reminder').on('submit', function(e){
     });
 });
 
-// Eliminar usuario
+// ELIMINAR USUARIO
 $('.delete-user-btn').click(function(){
     if(!confirm('¿Eliminar usuario?')) return;
     let id = $(this).data('id');
@@ -274,6 +297,50 @@ $('.delete-user-btn').click(function(){
         }
     });
 });
+
+// FILTRO DE PROVEEDORES (Proveedores tab)
+(function(){
+    const chkAll = document.getElementById('chk_all_providers');
+    const providerChecks = document.querySelectorAll('.provider-filter');
+
+    function aplicarFiltro() {
+        const activos = [];
+        providerChecks.forEach(chk => {
+            if (chk.checked) activos.push(chk.value);
+        });
+
+        const cards = document.querySelectorAll('.proveedor-card');
+
+        if (activos.length === 0 || chkAll.checked) {
+            cards.forEach(c => c.style.display = 'block');
+            return;
+        }
+
+        cards.forEach(c => c.style.display = 'none');
+        activos.forEach(id => {
+            document.querySelectorAll('.provider-' + id).forEach(c => {
+                c.style.display = 'block';
+            });
+        });
+    }
+
+    if (chkAll) {
+        chkAll.addEventListener('change', () => {
+            const checked = chkAll.checked;
+            providerChecks.forEach(chk => chk.checked = checked);
+            aplicarFiltro();
+        });
+
+        providerChecks.forEach(chk => {
+            chk.addEventListener('change', () => {
+                if (!chk.checked) chkAll.checked = false;
+                aplicarFiltro();
+            });
+        });
+
+        aplicarFiltro();
+    }
+})();
 </script>
 
 </body>

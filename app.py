@@ -5,20 +5,21 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import psycopg
 import psycopg.rows
+import psycopg.errors
 import boto3
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'supersecretkey')
 
-# ---------- DATABASE CONFIG ----------
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_conn():
     return psycopg.connect(DATABASE_URL)
 
+
 # ---------- AWS CONFIG ----------
 AWS_REGION = os.environ.get('AWS_REGION', 'us-east-2')
-BUCKET_NAME = os.environ.get('AWS_BUCKET_NAME', 'repse-documento')
+BUCKET_NAME = os.environ.get('AWS_BUCKET_NAME')
 
 s3 = boto3.client(
     's3',
@@ -27,7 +28,8 @@ s3 = boto3.client(
     region_name=AWS_REGION
 )
 
-# ---------- CONSTANTS ----------
+
+# ---------- DOCUMENTOS OBLIGATORIOS ----------
 DOCUMENTOS_OBLIGATORIOS = [
     "Cédula fiscal",
     "Identificación oficial",
@@ -39,20 +41,9 @@ DOCUMENTOS_OBLIGATORIOS = [
 ]
 
 
-# ---------- HELPERS ----------
-def get_presigned_url(filename):
-    try:
-        return s3.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': BUCKET_NAME, 'Key': filename},
-            ExpiresIn=120  # 2 minutos
-        )
-    except Exception as e:
-        print("Presigned error:", e)
-        return None
-
-
-# ================================= LOGIN =================================
+# ==========================================
+# LOGIN
+# ==========================================
 @app.route('/', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
@@ -79,14 +70,14 @@ def login():
                 return redirect(url_for('dashboard_admin'))
             else:
                 return redirect(url_for('dashboard_proveedor'))
-
         flash('Credenciales incorrectas')
 
     return render_template('login.html')
 
 
-
-# ================================= REGISTRO =================================
+# ==========================================
+# REGISTRO
+# ==========================================
 @app.route('/registro', methods=['GET','POST'])
 def registro():
     if request.method == 'POST':
@@ -101,14 +92,14 @@ def registro():
         conn = get_conn()
         cur = conn.cursor()
         try:
-            cur.execute("""
-                INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado)
-                VALUES(%s,%s,%s,%s,%s,%s)
-            """, (nombre, usuario, correo, password_hash, rol, 'pendiente'))
+            cur.execute(
+                'INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(%s,%s,%s,%s,%s,%s)',
+                (nombre, usuario, correo, password_hash, rol, 'pendiente')
+            )
             conn.commit()
-            flash('Registro exitoso. Espera aprobación del administrador.')
+            flash('Registro exitoso. Espera aprobación.')
             return redirect(url_for('login'))
-        except:
+        except psycopg.errors.UniqueViolation:
             conn.rollback()
             flash('El usuario ya existe.')
         finally:
@@ -118,18 +109,30 @@ def registro():
     return render_template('registro.html')
 
 
-
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
 
 
+# ==========================================
+# ADMIN DASHBOARD
+# ==========================================
+def get_presigned_url(filename):
+    try:
+        return s3.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': BUCKET_NAME, 'Key': filename},
+            ExpiresIn=300
+        )
+    except:
+        return None
 
-# ============================== ADMIN DASHBOARD ==============================
+
 @app.route('/admin/dashboard')
 def dashboard_admin():
     if 'usuario' not in session or session.get('rol') != 1:
+        flash('Acceso denegado')
         return redirect(url_for('login'))
 
     conn = get_conn()
@@ -140,6 +143,13 @@ def dashboard_admin():
 
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2")
     proveedores = cur.fetchall()
+
+    # FILTRO OPCIONAL
+    filtro = request.args.get('proveedor_id')
+    if filtro and filtro.isdigit():
+        proveedores_filtrados = [p for p in proveedores if p['id'] == int(filtro)]
+    else:
+        proveedores_filtrados = proveedores
 
     cur.execute("SELECT * FROM projects ORDER BY created_at DESC")
     projects = cur.fetchall()
@@ -157,7 +167,8 @@ def dashboard_admin():
     return render_template(
         'dashboard_admin.html',
         pendientes=pendientes,
-        proveedores=proveedores,
+        proveedores=proveedores_filtrados,
+        proveedores_original=proveedores,
         proyectos=projects,
         documentos_por_usuario=docs_by_user,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
@@ -165,10 +176,13 @@ def dashboard_admin():
     )
 
 
-
+# ==========================================
+# APROBAR / RECHAZAR USUARIO
+# ==========================================
 @app.route('/admin/accion/<int:id>/<accion>')
 def accion(id, accion):
     if 'usuario' not in session or session.get('rol') != 1:
+        flash('Acceso denegado')
         return redirect(url_for('login'))
 
     conn = get_conn()
@@ -183,10 +197,13 @@ def accion(id, accion):
     cur.close()
     conn.close()
 
+    flash('Operación realizada')
     return redirect(url_for('dashboard_admin'))
 
 
-
+# ==========================================
+# DELETE USER
+# ==========================================
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -204,14 +221,13 @@ def delete_user():
     cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
     docs = cur.fetchall()
 
-    # Borrar archivos en S3
+    # BORRAR DOCUMENTOS EN S3
     for d in docs:
         try:
             s3.delete_object(Bucket=BUCKET_NAME, Key=d['ruta'])
         except:
             pass
 
-    # Borrar BD
     cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
     cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
     cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
@@ -223,22 +239,33 @@ def delete_user():
     return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
 
 
-
-# ============================== RECORDATORIOS ==============================
+# ==========================================
+# SEND REMINDER
+# ==========================================
 @app.route('/admin/send_reminder', methods=['POST'])
 def send_reminder():
     if 'usuario' not in session or session.get('rol') != 1:
-        return jsonify({'success': False}), 403
+        return jsonify({'success': False})
 
-    # **Aquí luego implementamos Outlook SMTP**
-    return jsonify({'success': True, 'sent': 1})
+    data = request.get_json()
+    provider_ids = data.get('provider_ids', [])
+    subject = data.get('subject', 'Recordatorio REPSE')
+    message = data.get('message', '')
+
+    if not provider_ids:
+        return jsonify({'success': False, 'message': 'No providers selected'})
+
+    # Simulación de envío
+    return jsonify({'success': True, 'sent': len(provider_ids)})
 
 
-
-# ============================ PROVEEDOR DASHBOARD ============================
+# ==========================================
+# PROVEEDOR DASHBOARD
+# ==========================================
 @app.route('/proveedor/dashboard', methods=['GET','POST'])
 def dashboard_proveedor():
     if 'usuario' not in session or session.get('rol') != 2:
+        flash('Acceso denegado')
         return redirect(url_for('login'))
 
     conn = get_conn()
@@ -248,10 +275,10 @@ def dashboard_proveedor():
 
     if request.method == 'POST':
         if request.form.get('action') == 'create_project':
-            name = request.form.get('project_name')
-            cur.execute("INSERT INTO projects(provider_id, name, created_at) VALUES(%s,%s,NOW())",
-                        (user['id'], name))
+            cur.execute("INSERT INTO projects(provider_id,name,created_at) VALUES(%s,%s,NOW())",
+                        (user['id'], request.form.get('project_name')))
             conn.commit()
+            flash("Proyecto creado.")
             return redirect(url_for('dashboard_proveedor'))
 
         if request.form.get('action') == 'upload_doc':
@@ -259,50 +286,34 @@ def dashboard_proveedor():
             tipo = request.form.get('tipo_documento')
             archivo = request.files.get('documento')
 
-            if archivo and archivo.filename:
+            if archivo and archivo.filename != '':
                 filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{archivo.filename}"
+                
+                cur.execute("SELECT * FROM documentos WHERE usuario_id=%s AND tipo_documento=%s AND project_id=%s",
+                            (user['id'], tipo, project_id))
+                existente = cur.fetchone()
 
-                # Buscar si existe documento previo
-                cur.execute("""
-                    SELECT ruta FROM documentos
-                    WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
-                """, (user['id'], project_id, tipo))
-                old = cur.fetchone()
-
-                # Subir nuevo archivo
-                s3.upload_fileobj(
-                    archivo,
-                    BUCKET_NAME,
-                    filename,
-                    ExtraArgs={'ACL': 'private'}
-                )
-
-                # Si había archivo → eliminar de S3
-                if old:
+                if existente:
                     try:
-                        s3.delete_object(Bucket=BUCKET_NAME, Key=old['ruta'])
-                    except:
-                        pass
+                        s3.delete_object(Bucket=BUCKET_NAME, Key=existente['ruta'])
+                    except: pass
 
-                    # Reemplazar registro
-                    cur.execute("""
-                        UPDATE documentos
-                        SET nombre_archivo=%s, ruta=%s, fecha_subida=NOW()
-                        WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
-                    """, (archivo.filename, filename, user['id'], project_id, tipo))
-                else:
-                    cur.execute("""
-                        INSERT INTO documentos(usuario_id,nombre_archivo,ruta,tipo_documento,fecha_subida,project_id)
-                        VALUES(%s,%s,%s,%s,NOW(),%s)
-                    """, (user['id'], archivo.filename, filename, tipo, project_id))
+                    cur.execute("DELETE FROM documentos WHERE id=%s", (existente['id'],))
 
+                s3.upload_fileobj(archivo, BUCKET_NAME, filename,
+                                  ExtraArgs={'ACL': 'private'})
+
+                cur.execute("""
+                INSERT INTO documentos(usuario_id,nombre_archivo,ruta,tipo_documento,fecha_subida,project_id)
+                VALUES(%s,%s,%s,%s,NOW(),%s)
+                """, (user['id'], archivo.filename, filename, tipo, project_id))
                 conn.commit()
-
+                flash("Documento subido correctamente.")
 
     cur.execute("SELECT * FROM projects WHERE provider_id=%s ORDER BY created_at DESC", (user['id'],))
     projects = cur.fetchall()
 
-    cur.execute("SELECT * FROM documentos WHERE usuario_id=%s", (user['id'],))
+    cur.execute("SELECT * FROM documentos WHERE usuario_id=%s ORDER BY fecha_subida DESC", (user['id'],))
     docs = cur.fetchall()
 
     cur.close()
@@ -315,10 +326,8 @@ def dashboard_proveedor():
     documentos_subidos = {}
     for p in projects:
         documentos_subidos[p['id']] = {}
-        for doc in DOCUMENTOS_OBLIGATORIOS:
-            for d in docs_by_project.get(p['id'], []):
-                if d['tipo_documento'] == doc:
-                    documentos_subidos[p['id']][doc] = d
+        for d in docs_by_project.get(p['id'], []):
+            documentos_subidos[p['id']][d['tipo_documento']] = d
 
     return render_template(
         'dashboard_proveedor.html',
@@ -328,6 +337,5 @@ def dashboard_proveedor():
     )
 
 
-
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()

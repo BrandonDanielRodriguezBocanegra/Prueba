@@ -6,14 +6,14 @@ from datetime import datetime
 import psycopg
 import psycopg.rows
 import psycopg.errors
+import smtplib
+from email.message import EmailMessage
 import boto3
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'supersecretkey')
 
-DATABASE_URL = os.environ.get(
-    'DATABASE_URL'
-)
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_conn():
     return psycopg.connect(DATABASE_URL)
@@ -107,7 +107,8 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# ========== ADMIN DASHBOARD ==========
+
+# ---------- FUNCTION PRESIGNED URL ----------
 def get_presigned_url(filename):
     try:
         return s3.generate_presigned_url(
@@ -118,6 +119,8 @@ def get_presigned_url(filename):
     except:
         return None
 
+
+# ========== ADMIN DASHBOARD ==========
 @app.route('/admin/dashboard')
 def dashboard_admin():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -156,7 +159,8 @@ def dashboard_admin():
         get_presigned_url=get_presigned_url
     )
 
-# APROBAR / RECHAZAR
+
+# ---------- APROBAR / RECHAZAR ----------
 @app.route('/admin/accion/<int:id>/<accion>')
 def accion(id, accion):
     if 'usuario' not in session or session.get('rol') != 1:
@@ -178,8 +182,8 @@ def accion(id, accion):
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
 
-# DELETE USER
 
+# ---------- DELETE USER ----------
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -194,18 +198,15 @@ def delete_user():
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    # Obtener documentos del usuario para borrarlos del bucket
     cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
     docs = cur.fetchall()
 
-    # Borrar documentos en S3
     for d in docs:
         try:
             s3.delete_object(Bucket=BUCKET_NAME, Key=d['ruta'])
         except Exception as e:
             print("Error eliminando archivo S3:", e)
 
-    # Borrar registros en BD
     cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
     cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
     cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
@@ -216,19 +217,40 @@ def delete_user():
 
     return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
 
-# ---------- AJAX Reminder ----------
-@app.route('/admin/send_reminder', methods=['POST'], endpoint='send_reminder')
+
+# ---------- OUTLOOK EMAIL FUNCTION ----------
+def send_email_outlook(destinatarios, asunto, mensaje):
+    outlook_user = os.environ.get("MAIL_USERNAME")
+    outlook_pass = os.environ.get("MAIL_PASSWORD")
+
+    if not outlook_user or not outlook_pass:
+        raise Exception("Faltan credenciales de correo")
+
+    msg = EmailMessage()
+    msg["From"] = outlook_user
+    msg["To"] = ", ".join(destinatarios)
+    msg["Subject"] = asunto
+    msg.set_content(mensaje)
+
+    with smtplib.SMTP("smtp.office365.com", 587) as smtp:
+        smtp.starttls()
+        smtp.login(outlook_user, outlook_pass)
+        smtp.send_message(msg)
+
+
+# ---------- SEND REMINDER ----------
+@app.route('/admin/send_reminder', methods=['POST'])
 def send_reminder():
     if 'usuario' not in session or session.get('rol') != 1:
-        return jsonify({'success': False, 'message': 'Acceso denegado'}), 403
+        return jsonify({'success': False}), 403
 
-    data = request.get_json() or {}
+    data = request.get_json()
     provider_ids = data.get('provider_ids', [])
-    subject = data.get('subject', 'Recordatorio REPSE')
-    message = data.get('message', '')
+    subject = data.get('subject')
+    message = data.get('message')
 
     if not provider_ids:
-        return jsonify({'success': False, 'message': 'No providers selected'}), 400
+        return jsonify({'success': False, 'message': 'No proveedores elegidos'}), 400
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
@@ -236,22 +258,17 @@ def send_reminder():
     recipients = []
     for pid in provider_ids:
         cur.execute("SELECT correo FROM usuarios WHERE id=%s", (pid,))
-        row = cur.fetchone()
-        if row:
-            recipients.append(row['correo'])
+        r = cur.fetchone()
+        if r: recipients.append(r['correo'])
 
-    cur.execute("SELECT correo, mail_password FROM usuarios WHERE usuario=%s", (session['usuario'],))
-    admin = cur.fetchone()
     cur.close()
     conn.close()
 
-    # AQUI puedes usar tus credenciales SMTP reales si configuras correo
-    # De momento envío solo un mensaje simulado
-    sent = len(recipients)
-
-    return jsonify({'success': True, 'sent': sent})
-
-
+    try:
+        send_email_outlook(recipients, subject, message)
+        return jsonify({'success': True, 'sent': len(recipients)})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 # ========== PROVEEDOR DASHBOARD ==========

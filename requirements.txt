@@ -12,3 +12,4 @@ psycopg[binary]==3.2.9
 # AWS S3
 boto3==1.34.79
 botocore==1.34.79
+python-dotenv==1.0.1

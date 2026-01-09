@@ -16,6 +16,27 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 def get_conn():
     return psycopg.connect(DATABASE_URL)
 
+def ensure_db_initialized():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        # Si la tabla usuarios no existe, esto fallará
+        cur.execute("SELECT 1 FROM usuarios LIMIT 1")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        # Inicializa DB si faltan tablas
+        print("DB no inicializada o inaccesible, ejecutando init_db.py:", e)
+        try:
+            import init_db  # ejecuta el script al importarlo
+        except Exception as e2:
+            print("Error ejecutando init_db:", e2)
+
+ensure_db_initialized()
+
+
+
+
 
 # ---------- AWS CONFIG ----------
 AWS_REGION = os.environ.get('AWS_REGION', 'us-east-2')

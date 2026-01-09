@@ -1,11 +1,9 @@
-import os
+# init_db.py
 import psycopg2
+from psycopg2 import sql
 from werkzeug.security import generate_password_hash
 
-DB_URL = os.environ.get("DATABASE_URL")
-
-if not DB_URL:
-    raise Exception("DATABASE_URL no está definido")
+DB_URL = "postgresql://repse_db_0h96_user:7SSb38FREUPm7m1paHhJ4q1mOBWllYXM@dpg-d5fsh4mr433s73b7o5k0-a.oregon-postgres.render.com/repse_db_0h96"
 
 conn = psycopg2.connect(DB_URL)
 c = conn.cursor()

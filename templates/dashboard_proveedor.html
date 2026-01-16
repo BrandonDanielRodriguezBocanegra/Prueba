@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>Proveedor - REPSE</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
   <style>
     body {
       background: linear-gradient(135deg, #ff6a00, #ff007b, #6600ff);
@@ -13,210 +12,117 @@
       color: #fff;
       min-height: 100vh;
     }
-    @keyframes gradientShift {
-      0% { background-position:0% 50%; }
-      50% { background-position:100% 50%; }
-      100% { background-position:0% 50%; }
+    @keyframes gradientShift { 
+      0% { background-position:0% 50%; } 
+      50% { background-position:100% 50%; } 
+      100% { background-position:0% 50%; } 
     }
 
     .card {
-      background: rgba(255,255,255,0.95);
+      background: rgba(255,255,255,0.90);
       color: #333;
-      border-radius: 14px;
-      padding: 18px;
-      margin-bottom: 18px;
-      box-shadow: 0 8px 20px rgba(0,0,0,.12);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 25px;
+      box-shadow: 0 0 12px rgba(0,0,0,0.25);
     }
 
-    .table th { background-color: #ff6a00; color: white; }
+    .table th {
+      background-color: #ff6a00;
+      color: #fff;
+      text-align: center;
+    }
 
-    .logout-btn {
+    .table td {
+      vertical-align: middle;
+    }
+
+    .btn-logout {
       background-color: rgba(255,255,255,0.2);
       color: #fff;
-      border: 1px solid rgba(255,255,255,0.85);
-      transition: all .2s ease;
+      border: 1px solid #fff;
     }
-    .logout-btn:hover {
+    .btn-logout:hover {
       background-color: #fff;
       color: #6600ff;
-      border-color: #fff;
-    }
-
-    .month-title { font-weight: 800; margin: 0; }
-    .month-sub { font-size: 0.9rem; opacity: .8; margin: 0; }
-
-    .accordion-button {
-      font-weight: 700;
-    }
-    .accordion-button:not(.collapsed) {
-      color: #111;
-      background: rgba(255,106,0,0.15);
-    }
-
-    .project-title {
-      font-size: 1.25rem;
-      font-weight: 800;
-      margin-bottom: 8px;
-    }
-    .project-meta {
-      font-weight: 600;
-      margin-bottom: 10px;
     }
   </style>
 </head>
-
 <body>
-<div class="container mt-4">
-  <h3 class="text-white mb-3">Dashboard Proveedor</h3>
+
+<div class="container mt-4 pb-5">
+  <h3 class="text-white mb-4 text-center">Dashboard Proveedor</h3>
 
   {% with messages = get_flashed_messages() %}
     {% if messages %}
-      <div class="alert alert-info">
+      <div class="alert alert-info text-center">
         {% for m in messages %}{{ m }}<br>{% endfor %}
       </div>
     {% endif %}
   {% endwith %}
 
-  {# =========================
-     AGRUPAR PROYECTOS POR MES/AÑO
-     ========================= #}
-  {% set meses = {
-    1:'Enero', 2:'Febrero', 3:'Marzo', 4:'Abril', 5:'Mayo', 6:'Junio',
-    7:'Julio', 8:'Agosto', 9:'Septiembre', 10:'Octubre', 11:'Noviembre', 12:'Diciembre'
-  } %}
+  <!-- CREAR PROYECTO -->
+  <div class="card">
+    <h5>Crear nuevo proyecto</h5>
+    <form method="POST">
+      <input type="hidden" name="action" value="create_project">
+      <div class="mb-2">
+        <input type="text" name="project_name" class="form-control" placeholder="Nombre del proyecto" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Crear proyecto</button>
+    </form>
+  </div>
 
-  {% set grouped = {} %}
+  <!-- LISTA DE PROYECTOS -->
   {% for p in projects %}
-    {% set dt = p['created_at'] %}
-    {% if dt %}
-      {% set m = dt.month %}
-      {% set y = dt.year %}
-    {% else %}
-      {% set m = 0 %}
-      {% set y = 0 %}
-    {% endif %}
-    {% set key = y ~ '-' ~ m %}
-    {% if key not in grouped %}
-      {% set _ = grouped.update({key: {'year': y, 'month': m, 'items': []}}) %}
-    {% endif %}
-    {% set _ = grouped[key]['items'].append(p) %}
+  <div class="card">
+    <h5 class="mb-3">
+      {{ p['name'] }} 
+      <small class="text-muted">({{ p['created_at'] }})</small>
+    </h5>
+
+    <table class="table table-bordered table-hover">
+      <thead>
+        <tr><th>Documento</th><th>Acción</th><th>Estado</th></tr>
+      </thead>
+      <tbody>
+        {% for doc in DOCUMENTOS_OBLIGATORIOS %}
+        {% set subido = documentos_subidos[p['id']].get(doc) %}
+        <tr>
+          <td>{{ doc }}</td>
+          <td style="width: 60%;">
+            <form method="POST" enctype="multipart/form-data" style="display:flex; gap:8px;">
+              <input type="hidden" name="action" value="upload_doc">
+              <input type="hidden" name="project_id" value="{{ p['id'] }}">
+              <input type="hidden" name="tipo_documento" value="{{ doc }}">
+              <input type="file" name="documento" class="form-control form-control-sm" {% if not subido %}required{% endif %}>
+              <button type="submit"
+                class="btn {% if subido %}btn-warning{% else %}btn-success{% endif %} btn-sm">
+                {% if subido %}Actualizar{% else %}Subir{% endif %}
+              </button>
+            </form>
+          </td>
+          <td class="text-center">
+            {% if subido %}
+              🟢 Subido
+            {% else %}
+              ❌ Pendiente
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="text-center">No tienes proyectos creados.</p>
   {% endfor %}
 
-  {% if grouped %}
-    <div class="card">
-      <h5 class="mb-3">Pedidos / Proyectos por mes</h5>
+  <div class="text-center">
+    <a href="{{ url_for('logout') }}" class="btn btn-logout mt-3 px-4">Cerrar sesión</a>
+  </div>
 
-      <div class="accordion" id="accordionMeses">
-
-        {# Ordenar keys por año desc, mes desc #}
-        {% set keys = grouped.keys()|list %}
-        {% set keys = keys|sort(reverse=True) %}
-
-        {% for k in keys %}
-          {% set g = grouped[k] %}
-          {% set mid = 'mes_' ~ loop.index %}
-
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="heading-{{ mid }}">
-              <button class="accordion-button {% if not loop.first %}collapsed{% endif %}"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#collapse-{{ mid }}"
-                      aria-expanded="{% if loop.first %}true{% else %}false{% endif %}"
-                      aria-controls="collapse-{{ mid }}">
-                <div>
-                  <p class="month-title">
-                    {{ meses.get(g.month, 'Sin mes') }} {{ g.year }}
-                  </p>
-                  <p class="month-sub">
-                    {{ g.items|length }} pedido(s)
-                  </p>
-                </div>
-              </button>
-            </h2>
-
-            <div id="collapse-{{ mid }}"
-                 class="accordion-collapse collapse {% if loop.first %}show{% endif %}"
-                 aria-labelledby="heading-{{ mid }}"
-                 data-bs-parent="#accordionMeses">
-
-              <div class="accordion-body">
-
-                {# Proyectos del mes #}
-                {% for p in g.items %}
-                  <div class="card mb-3">
-                    <div class="project-title">{{ p['name'] }}</div>
-
-                    {# Fecha SIN hora: dia/mes/año #}
-                    <div class="project-meta">
-                      Fecha: {{ "%02d/%02d/%04d"|format(p['created_at'].day, p['created_at'].month, p['created_at'].year) }}
-                    </div>
-
-                    <table class="table table-bordered">
-                      <thead>
-                        <tr>
-                          <th style="width:35%;">Documento</th>
-                          <th style="width:45%;">Acción</th>
-                          <th style="width:20%;">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {% for doc in DOCUMENTOS_OBLIGATORIOS %}
-                          {% set existe = documentos_subidos[p['id']].get(doc) %}
-                          <tr>
-                            <td>{{ doc }}</td>
-
-                            <td>
-                              <form method="POST" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center;">
-                                <input type="hidden" name="action" value="upload_doc">
-                                <input type="hidden" name="project_id" value="{{ p['id'] }}">
-                                <input type="hidden" name="tipo_documento" value="{{ doc }}">
-
-                                <div style="flex:1;">
-                                  <input type="file" name="documento" class="form-control" {% if not existe %}required{% endif %}>
-                                  {% if existe %}
-                                    <small class="text-muted">
-                                      Actual: <b>{{ existe['nombre_archivo'] }}</b>
-                                    </small>
-                                  {% endif %}
-                                </div>
-
-                                {% if existe %}
-                                  <button type="submit" class="btn btn-warning btn-sm">Actualizar</button>
-                                {% else %}
-                                  <button type="submit" class="btn btn-success btn-sm">Subir</button>
-                                {% endif %}
-                              </form>
-                            </td>
-
-                            <td>
-                              {% if existe %}
-                                <span class="badge bg-success">🟢 Subido</span>
-                              {% else %}
-                                <span class="badge bg-danger">❌ Pendiente</span>
-                              {% endif %}
-                            </td>
-                          </tr>
-                        {% endfor %}
-                      </tbody>
-                    </table>
-                  </div>
-                {% endfor %}
-
-              </div>
-            </div>
-          </div>
-
-        {% endfor %}
-      </div>
-    </div>
-  {% else %}
-    <p>No tienes pedidos/proyectos todavía.</p>
-  {% endif %}
-
-  <a href="{{ url_for('logout') }}" class="btn logout-btn mt-3">Cerrar sesión</a>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

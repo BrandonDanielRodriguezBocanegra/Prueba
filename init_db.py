@@ -1,88 +1,64 @@
 # init_db.py
 import os
-import psycopg2
-from werkzeug.security import generate_password_hash
+import psycopg
 
-DB_URL = os.environ.get("DATABASE_URL")
-if not DB_URL:
-    DB_URL = "postgresql://repse_db_user:PASS@HOST/repse_db"  # fallback si lo usas local
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-conn = psycopg2.connect(DB_URL)
-c = conn.cursor()
+if not DATABASE_URL:
+    raise RuntimeError("Falta DATABASE_URL en variables de entorno.")
 
-# --- Usuarios ---
-c.execute('''
-CREATE TABLE IF NOT EXISTS usuarios(
-    id SERIAL PRIMARY KEY,
-    nombre TEXT NOT NULL,
-    usuario TEXT UNIQUE NOT NULL,
-    correo TEXT NOT NULL,
-    password TEXT NOT NULL,
-    rol INTEGER NOT NULL,
-    estado TEXT NOT NULL,
-    mail_password TEXT
-)
-''')
+def main():
+    conn = psycopg.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-# Agregar columnas nuevas si no existen
-def add_column_if_missing(table, column, coltype):
-    try:
-        c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
-    except Exception:
-        conn.rollback()
-    else:
-        conn.commit()
+    # ---------- TABLA USUARIOS ----------
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        usuario TEXT UNIQUE NOT NULL,
+        correo TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        rol INT NOT NULL DEFAULT 2,
+        estado TEXT NOT NULL DEFAULT 'pendiente'
+    );
+    """)
 
-add_column_if_missing("usuarios", "req_mes", "TEXT")
-add_column_if_missing("usuarios", "req_fecha", "DATE")
+    # ---------- TABLA PROJECTS ----------
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS projects (
+        id SERIAL PRIMARY KEY,
+        provider_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    """)
 
-# --- Proyectos (Pedidos) ---
-c.execute('''
-CREATE TABLE IF NOT EXISTS projects(
-    id SERIAL PRIMARY KEY,
-    provider_id INTEGER NOT NULL REFERENCES usuarios(id),
-    name TEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    completed INTEGER DEFAULT 0
-)
-''')
+    # ---------- AGREGAR COLUMNAS NUEVAS A PROJECTS ----------
+    cur.execute("""
+    ALTER TABLE projects
+    ADD COLUMN IF NOT EXISTS pedido_no TEXT,
+    ADD COLUMN IF NOT EXISTS periodo_year INT,
+    ADD COLUMN IF NOT EXISTS periodo_month INT;
+    """)
 
-# --- Documentos ---
-c.execute('''
-CREATE TABLE IF NOT EXISTS documentos(
-    id SERIAL PRIMARY KEY,
-    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
-    nombre_archivo TEXT NOT NULL,
-    ruta TEXT NOT NULL,
-    fecha_subida TIMESTAMP NOT NULL DEFAULT NOW(),
-    tipo_documento TEXT,
-    project_id INTEGER REFERENCES projects(id)
-)
-''')
+    # ---------- TABLA DOCUMENTOS ----------
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS documentos (
+        id SERIAL PRIMARY KEY,
+        usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+        project_id INT REFERENCES projects(id) ON DELETE CASCADE,
+        nombre_archivo TEXT NOT NULL,
+        ruta TEXT NOT NULL,
+        tipo_documento TEXT NOT NULL,
+        fecha_subida TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    """)
 
-# CREAR ADMIN SI NO EXISTE
-c.execute("SELECT id FROM usuarios WHERE usuario=%s", ('admin',))
-admin = c.fetchone()
-
-if not admin:
-    password_hash = generate_password_hash("admin123")
-    c.execute("""
-        INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado)
-        VALUES (%s,%s,%s,%s,%s,%s)
-    """, (
-        "Administrador Principal",
-        "admin",
-        "admin@empresa.com",
-        password_hash,
-        1,
-        "aprobado"
-    ))
     conn.commit()
-    print(">>> Usuario admin creado: admin / admin123")
-else:
-    print(">>> El usuario admin ya existe")
+    cur.close()
+    conn.close()
+    print("✅ Base de datos inicializada / actualizada correctamente.")
 
-c.close()
-conn.close()
-
-print("Base de datos inicializada correctamente.")
+if __name__ == "__main__":
+    main()

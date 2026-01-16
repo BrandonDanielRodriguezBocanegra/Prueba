@@ -37,8 +37,15 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
+MESES = [
+    (1, "Enero"), (2, "Febrero"), (3, "Marzo"), (4, "Abril"),
+    (5, "Mayo"), (6, "Junio"), (7, "Julio"), (8, "Agosto"),
+    (9, "Septiembre"), (10, "Octubre"), (11, "Noviembre"), (12, "Diciembre")
+]
+MESES_MAP = {m: n for m, n in MESES}
+
 # ========== LOGIN ==========
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
         usuario = request.form.get('usuario')
@@ -63,14 +70,15 @@ def login():
             if user['rol'] == 1:
                 return redirect(url_for('dashboard_admin'))
             else:
-                return redirect(url_for('dashboard_proveedor'))
+                # NUEVO: primero pasa por requerimientos
+                return redirect(url_for('requerimientos_proveedor'))
         else:
             flash('Credenciales incorrectas')
 
     return render_template('login.html')
 
 # ========== REGISTRO ==========
-@app.route('/registro', methods=['GET', 'POST'])
+@app.route('/registro', methods=['GET','POST'])
 def registro():
     if request.method == 'POST':
         nombre = request.form.get('nombre')
@@ -105,7 +113,7 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# ========== ADMIN DASHBOARD ==========
+# ========== ADMIN DASHBOARD (sin cambios aquí, lo de admin lo dejamos como ya lo tienes) ==========
 def get_presigned_url(filename):
     try:
         return s3.generate_presigned_url(
@@ -113,7 +121,7 @@ def get_presigned_url(filename):
             Params={'Bucket': BUCKET_NAME, 'Key': filename},
             ExpiresIn=300
         )
-    except Exception:
+    except:
         return None
 
 @app.route('/admin/dashboard')
@@ -122,119 +130,38 @@ def dashboard_admin():
         flash('Acceso denegado')
         return redirect(url_for('login'))
 
-    # ---- filtros (GET) ----
-    selected_provider_ids = request.args.get('providers', '').strip()  # "1,2,3"
-    selected_provider_ids_set = set()
-    if selected_provider_ids:
-        try:
-            selected_provider_ids_set = {int(x) for x in selected_provider_ids.split(',') if x.strip().isdigit()}
-        except Exception:
-            selected_provider_ids_set = set()
-
-    selected_year = request.args.get('year', '').strip()   # "2026"
-    selected_month = request.args.get('month', '').strip() # "01"
-    q = request.args.get('q', '').strip().lower()
-
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
     cur.execute("SELECT * FROM usuarios WHERE estado='pendiente'")
     pendientes = cur.fetchall()
 
-    cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2 ORDER BY nombre ASC")
-    proveedores_all = cur.fetchall()
+    cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2")
+    proveedores = cur.fetchall()
 
     cur.execute("SELECT * FROM projects ORDER BY created_at DESC")
-    projects_all = cur.fetchall()
+    projects = cur.fetchall()
 
     cur.execute("SELECT * FROM documentos ORDER BY fecha_subida DESC")
-    docs_all = cur.fetchall()
+    docs = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    # ---- años disponibles para dropdown ----
-    years_available = sorted(
-        {p['created_at'].year for p in projects_all if p.get('created_at')},
-        reverse=True
-    )
-
-    # ---- filtrar proveedores por multi-select + búsqueda ----
-    proveedores_filtered = []
-    for p in proveedores_all:
-        pid = p['id']
-        if selected_provider_ids_set and pid not in selected_provider_ids_set:
-            continue
-
-        if q:
-            blob = f"{p.get('nombre','')} {p.get('usuario','')} {p.get('correo','')}".lower()
-            # si no matchea el proveedor, igual puede matchear por proyecto; lo veremos abajo
-            # aquí no lo descartamos aún por q, lo dejamos y lo filtramos por proyectos también
-        proveedores_filtered.append(p)
-
-    # ---- filtrar proyectos por proveedor + mes/año + búsqueda ----
-    projects_filtered = []
-    for pr in projects_all:
-        provider_id = pr.get('provider_id')
-        if selected_provider_ids_set and provider_id not in selected_provider_ids_set:
-            continue
-
-        ca = pr.get('created_at')
-        if ca and selected_year:
-            if str(ca.year) != str(selected_year):
-                continue
-        if ca and selected_month:
-            # selected_month viene "01".."12"
-            if f"{ca.month:02d}" != str(selected_month).zfill(2):
-                continue
-
-        if q:
-            # búsqueda en proveedor + proyecto
-            prov = next((x for x in proveedores_all if x['id'] == provider_id), None)
-            blob = f"{(prov.get('nombre','') if prov else '')} {(prov.get('usuario','') if prov else '')} {(prov.get('correo','') if prov else '')} {pr.get('name','')}".lower()
-            if q not in blob:
-                continue
-
-        projects_filtered.append(pr)
-
-    # Si hay búsqueda, queremos mostrar SOLO proveedores que tengan proyectos que pasaron filtros (o que el proveedor matchee)
-    if q:
-        providers_with_visible_projects = {pr['provider_id'] for pr in projects_filtered}
-        proveedores_filtered = [
-            p for p in proveedores_filtered
-            if (p['id'] in providers_with_visible_projects) or (q in f"{p.get('nombre','')} {p.get('usuario','')} {p.get('correo','')}".lower())
-        ]
-
-    # ---- filtrar documentos por projects visibles ----
-    visible_project_ids = {p['id'] for p in projects_filtered}
-    docs_filtered = [d for d in docs_all if d.get('project_id') in visible_project_ids]
-
-    # ---- agrupar docs por usuario -> proyecto ----
-    documentos_por_usuario = {}
-    for d in docs_filtered:
-        documentos_por_usuario.setdefault(d['usuario_id'], {}).setdefault(d['project_id'], []).append(d)
+    docs_by_user = {}
+    for d in docs:
+        docs_by_user.setdefault(d['usuario_id'], {}).setdefault(d['project_id'], []).append(d)
 
     return render_template(
         'dashboard_admin.html',
         pendientes=pendientes,
-
-        # filtros
-        proveedores_all=proveedores_all,
-        proveedores=proveedores_filtered,
-        proyectos=projects_filtered,
-        documentos_por_usuario=documentos_por_usuario,
-
-        years_available=years_available,
-        selected_year=selected_year,
-        selected_month=selected_month,
-        selected_q=request.args.get('q', ''),
-        selected_providers=sorted(list(selected_provider_ids_set)),
-
+        proveedores=proveedores,
+        proyectos=projects,
+        documentos_por_usuario=docs_by_user,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
         get_presigned_url=get_presigned_url
     )
 
-# APROBAR / RECHAZAR
 @app.route('/admin/accion/<int:id>/<accion>')
 def accion(id, accion):
     if 'usuario' not in session or session.get('rol') != 1:
@@ -256,7 +183,6 @@ def accion(id, accion):
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
 
-# DELETE USER
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -273,6 +199,7 @@ def delete_user():
 
     cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
     docs = cur.fetchall()
+
     for d in docs:
         try:
             s3.delete_object(Bucket=BUCKET_NAME, Key=d['ruta'])
@@ -289,39 +216,6 @@ def delete_user():
 
     return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
 
-# DELETE PROJECT (admin)
-@app.route('/admin/delete_project', methods=['POST'])
-def delete_project():
-    if 'usuario' not in session or session.get('rol') != 1:
-        return jsonify({'success': False, 'msg': 'Acceso denegado'}), 403
-
-    data = request.get_json() or {}
-    project_id = data.get('project_id')
-
-    if not project_id:
-        return jsonify({'success': False, 'msg': 'project_id requerido'}), 400
-
-    conn = get_conn()
-    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-
-    cur.execute("SELECT ruta FROM documentos WHERE project_id=%s", (project_id,))
-    docs = cur.fetchall()
-    for d in docs:
-        try:
-            s3.delete_object(Bucket=BUCKET_NAME, Key=d['ruta'])
-        except Exception as e:
-            print("Error eliminando archivo S3:", e)
-
-    cur.execute("DELETE FROM documentos WHERE project_id=%s", (project_id,))
-    cur.execute("DELETE FROM projects WHERE id=%s", (project_id,))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return jsonify({'success': True, 'msg': 'Proyecto eliminado correctamente'})
-
-# ---------- AJAX Reminder ----------
 @app.route('/admin/send_reminder', methods=['POST'], endpoint='send_reminder')
 def send_reminder():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -334,12 +228,75 @@ def send_reminder():
 
     return jsonify({'success': True, 'sent': len(provider_ids)})
 
+# ===========================
+# NUEVO: REQUERIMIENTOS PROVEEDOR
+# ===========================
+@app.route('/proveedor/requerimientos', methods=['GET', 'POST'])
+def requerimientos_proveedor():
+    if 'usuario' not in session or session.get('rol') != 2:
+        flash('Acceso denegado')
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        periodo_year = int(request.form.get('periodo_year') or 0)
+        periodo_month = int(request.form.get('periodo_month') or 0)
+        cantidad = int(request.form.get('cantidad') or 0)
+
+        if periodo_year < 2000 or periodo_year > 2100:
+            flash("Año inválido.")
+            return redirect(url_for('requerimientos_proveedor'))
+        if periodo_month < 1 or periodo_month > 12:
+            flash("Mes inválido.")
+            return redirect(url_for('requerimientos_proveedor'))
+        if cantidad < 1 or cantidad > 50:
+            flash("Cantidad inválida (1 a 50).")
+            return redirect(url_for('requerimientos_proveedor'))
+
+        pedidos = []
+        for i in range(1, cantidad + 1):
+            v = (request.form.get(f"pedido_{i}") or "").strip()
+            if v:
+                pedidos.append(v)
+
+        if len(pedidos) != cantidad:
+            flash("Debes llenar todos los No. de pedido.")
+            return redirect(url_for('requerimientos_proveedor'))
+
+        conn = get_conn()
+        cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+
+        cur.execute("SELECT * FROM usuarios WHERE usuario=%s", (session['usuario'],))
+        user = cur.fetchone()
+
+        # crear N proyectos (1 por pedido)
+        for pedido_no in pedidos:
+            # name = pedido_no (o puedes cambiarlo por otro campo si quieres)
+            cur.execute("""
+                INSERT INTO projects(provider_id, name, created_at, pedido_no, periodo_year, periodo_month)
+                VALUES (%s, %s, NOW(), %s, %s, %s)
+            """, (user['id'], pedido_no, pedido_no, periodo_year, periodo_month))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        flash("Pedidos registrados correctamente.")
+        return redirect(url_for('dashboard_proveedor', year=periodo_year, month=f"{periodo_month:02d}"))
+
+    # GET
+    current_year = datetime.utcnow().year
+    return render_template('requerimientos.html', meses=MESES, current_year=current_year)
+
 # ========== PROVEEDOR DASHBOARD ==========
 @app.route('/proveedor/dashboard', methods=['GET','POST'])
 def dashboard_proveedor():
     if 'usuario' not in session or session.get('rol') != 2:
         flash('Acceso denegado')
         return redirect(url_for('login'))
+
+    # filtros (GET)
+    selected_year = (request.args.get('year') or '').strip()
+    selected_month = (request.args.get('month') or '').strip()  # "01".."12"
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
@@ -348,15 +305,6 @@ def dashboard_proveedor():
     user = cur.fetchone()
 
     if request.method == 'POST':
-
-        if request.form.get('action') == 'create_project':
-            name = request.form.get('project_name')
-            cur.execute("INSERT INTO projects(provider_id, name, created_at) VALUES(%s,%s,NOW())",
-                        (user['id'], name))
-            conn.commit()
-            flash("Proyecto creado.")
-            return redirect(url_for('dashboard_proveedor'))
-
         if request.form.get('action') == 'upload_doc':
             project_id = int(request.form.get('project_id'))
             tipo = request.form.get('tipo_documento')
@@ -373,7 +321,7 @@ def dashboard_proveedor():
                         archivo,
                         BUCKET_NAME,
                         filename,
-                        ExtraArgs={'ACL': 'private'}
+                        ExtraArgs={'ACL':'private'}
                     )
 
                     cur.execute("""
@@ -383,9 +331,26 @@ def dashboard_proveedor():
                     conn.commit()
                     flash("Documento subido correctamente.")
 
-    cur.execute("SELECT * FROM projects WHERE provider_id=%s ORDER BY created_at DESC", (user['id'],))
+    # traer proyectos (pedidos) con filtro
+    query = "SELECT * FROM projects WHERE provider_id=%s"
+    params = [user['id']]
+
+    if selected_year:
+        query += " AND periodo_year=%s"
+        params.append(int(selected_year))
+    if selected_month:
+        query += " AND periodo_month=%s"
+        params.append(int(selected_month))
+
+    query += " ORDER BY periodo_year DESC, periodo_month DESC, created_at DESC"
+    cur.execute(query, tuple(params))
     projects = cur.fetchall()
 
+    # years para filtro
+    cur.execute("SELECT DISTINCT periodo_year FROM projects WHERE provider_id=%s AND periodo_year IS NOT NULL ORDER BY periodo_year DESC", (user['id'],))
+    years_available = [r['periodo_year'] for r in cur.fetchall() if r['periodo_year']]
+
+    # docs
     cur.execute("SELECT * FROM documentos WHERE usuario_id=%s ORDER BY fecha_subida DESC", (user['id'],))
     docs = cur.fetchall()
 
@@ -404,11 +369,20 @@ def dashboard_proveedor():
                 if d['tipo_documento'] == doc:
                     documentos_subidos[p['id']][doc] = d
 
+    # helper: mes en palabras
+    def mes_nombre(m):
+        return MESES_MAP.get(m, "")
+
     return render_template(
         'dashboard_proveedor.html',
         projects=projects,
         documentos_subidos=documentos_subidos,
-        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS
+        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
+        meses=MESES,
+        years_available=years_available,
+        selected_year=selected_year,
+        selected_month=selected_month,
+        mes_nombre=mes_nombre
     )
 
 if __name__ == '__main__':

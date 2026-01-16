@@ -20,30 +20,133 @@
       100% { background-position: 0% 50%; }
     }
     .card {
-      width: 450px;
+      width: 520px;
       padding: 20px;
       border-radius: 15px;
       background: rgba(255,255,255,0.95);
       color: #333;
       box-shadow: 0 0 15px rgba(0,0,0,0.25);
     }
+    .hint {
+      font-size: 0.9rem;
+      color: #555;
+      margin-top: -6px;
+      margin-bottom: 10px;
+    }
+    .provider-box {
+      display: none;
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 12px;
+      padding: 14px;
+      background: rgba(255,255,255,0.85);
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <h3 class="mb-3 text-center">Registro</h3>
-    <form method="POST">
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="alert alert-warning">
+          {% for msg in messages %}{{ msg }}<br>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" id="registroForm">
       <input type="text" class="form-control mb-2" name="nombre" placeholder="Nombre completo" required>
       <input type="text" class="form-control mb-2" name="usuario" placeholder="Usuario" required>
       <input type="email" class="form-control mb-2" name="correo" placeholder="Correo electrónico" required>
       <input type="password" class="form-control mb-2" name="contrasena" placeholder="Contraseña" required>
-      <select class="form-select mb-2" name="rol" required>
-        <option value="2">Proveedor</option>
+
+      <label class="form-label mt-2">Rol</label>
+      <select class="form-select mb-2" name="rol" id="rolSelect" required>
+        <option value="2" selected>Proveedor</option>
         <option value="1">Administrador</option>
       </select>
-      <button type="submit" class="btn btn-success w-100">Registrarse</button>
+      <div class="hint">Si eliges Proveedor, tendrás que capturar los datos REPSE.</div>
+
+      <!-- CAMPOS EXTRA SOLO PARA PROVEEDOR -->
+      <div class="provider-box mt-2" id="providerBox">
+        <h5 class="mb-2">Datos REPSE (Proveedor)</h5>
+
+        <div class="row g-2">
+          <div class="col-12">
+            <input type="text" class="form-control" name="repse_numero" placeholder="Número de Registro REPSE (ej. 123456)">
+          </div>
+
+          <div class="col-12">
+            <input type="text" class="form-control" name="repse_folio" placeholder="Registro Localizado Folio (ej. 123456)">
+          </div>
+
+          <div class="col-12">
+            <input type="text" class="form-control" name="repse_aviso" placeholder="Aviso de registro N. (ej. AR165306)">
+          </div>
+
+          <div class="col-12">
+            <input type="date" class="form-control" name="repse_fecha_aviso" placeholder="Fecha de aviso de registro">
+          </div>
+
+          <div class="col-12">
+            <input type="date" class="form-control" name="repse_vigencia" placeholder="Vigencia del Registro">
+          </div>
+
+          <div class="col-12">
+            <input type="text" class="form-control" name="rfc" placeholder="RFC (ej. ABCD010203EF1)">
+          </div>
+
+          <div class="col-12">
+            <input type="text" class="form-control" name="regimen_patronal" placeholder="Régimen Patronal">
+          </div>
+
+          <div class="col-12">
+            <textarea class="form-control" name="objeto_servicio" rows="2" placeholder="Objeto del Servicio (ej. Construcción y Edificación por Cuenta Propia)"></textarea>
+          </div>
+
+          <hr class="my-2">
+
+          <div class="col-12">
+            <input type="text" class="form-control" name="contacto_nombre" placeholder="Nombre del Contacto (ej. Alfredo Jaurrieta Bustos)">
+          </div>
+
+          <div class="col-12">
+            <input type="text" class="form-control" name="contacto_telefono" placeholder="Teléfono (ej. 753 537 2469)">
+          </div>
+
+          <div class="col-12">
+            <input type="email" class="form-control" name="contacto_correo" placeholder="Correo Contacto (ej. correo@dominio.com)">
+          </div>
+        </div>
+
+        <div class="hint mt-2">
+          * Estos campos son obligatorios si te registras como Proveedor.
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-success w-100 mt-3">Registrarse</button>
       <a href="{{ url_for('login') }}" class="btn btn-outline-primary w-100 mt-2">Volver a login</a>
     </form>
   </div>
+
+<script>
+  const rolSelect = document.getElementById('rolSelect');
+  const providerBox = document.getElementById('providerBox');
+
+  function toggleProviderFields() {
+    const isProveedor = rolSelect.value === "2";
+    providerBox.style.display = isProveedor ? "block" : "none";
+
+    // Si es proveedor, hacemos required esos campos
+    const providerInputs = providerBox.querySelectorAll('input, textarea');
+    providerInputs.forEach(el => {
+      // puedes ajustar cuáles obligatorios; aquí los ponemos todos
+      el.required = isProveedor;
+    });
+  }
+
+  rolSelect.addEventListener('change', toggleProviderFields);
+  toggleProviderFields();
+</script>
 </body>
 </html>

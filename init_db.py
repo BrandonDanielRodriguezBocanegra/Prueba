@@ -1,18 +1,16 @@
-# init_db.py  (psycopg v3)
+# init_db.py (psycopg v3)
 import os
 import psycopg
 from werkzeug.security import generate_password_hash
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL no está configurada en el entorno.")
+    raise RuntimeError("DATABASE_URL no está configurada.")
 
 def main():
     conn = psycopg.connect(DATABASE_URL)
     cur = conn.cursor()
 
-    # --- Usuarios ---
     cur.execute("""
     CREATE TABLE IF NOT EXISTS usuarios(
         id SERIAL PRIMARY KEY,
@@ -26,7 +24,20 @@ def main():
     )
     """)
 
-    # --- Proyectos ---
+    # Agregar columnas REPSE (si no existen)
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS repse_numero TEXT;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS repse_folio TEXT;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS repse_aviso TEXT;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS repse_fecha_aviso DATE;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS repse_vigencia DATE;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS rfc TEXT;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS regimen_patronal TEXT;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS objeto_servicio TEXT;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS contacto_nombre TEXT;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS contacto_telefono TEXT;")
+    cur.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS contacto_correo TEXT;")
+
+    # tablas restantes
     cur.execute("""
     CREATE TABLE IF NOT EXISTS projects(
         id SERIAL PRIMARY KEY,
@@ -37,7 +48,6 @@ def main():
     )
     """)
 
-    # --- Documentos ---
     cur.execute("""
     CREATE TABLE IF NOT EXISTS documentos(
         id SERIAL PRIMARY KEY,
@@ -50,36 +60,25 @@ def main():
     )
     """)
 
-    # --- Crear admin si no existe ---
-    print("Verificando existencia del usuario administrador...")
-
-    cur.execute("SELECT 1 FROM usuarios WHERE usuario = %s", ("admin",))
-    exists = cur.fetchone()
-
-    if not exists:
-        password_hash = generate_password_hash("admin123")
+    # admin default
+    cur.execute("SELECT 1 FROM usuarios WHERE usuario=%s", ("admin",))
+    if not cur.fetchone():
         cur.execute("""
             INSERT INTO usuarios (nombre, usuario, correo, password, rol, estado)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s,%s,%s,%s,%s,%s)
         """, (
             "Administrador Principal",
             "admin",
             "admin@empresa.com",
-            password_hash,
+            generate_password_hash("admin123"),
             1,
             "aprobado"
         ))
-        print(">>> Usuario admin creado correctamente")
-        print(">>> Usuario: admin")
-        print(">>> Password: admin123")
-    else:
-        print(">>> El usuario admin ya existe")
 
     conn.commit()
     cur.close()
     conn.close()
-
-    print("Base de datos inicializada correctamente.")
+    print("DB lista.")
 
 if __name__ == "__main__":
     main()

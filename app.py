@@ -37,9 +37,7 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
-# =========================
-# HELPERS
-# =========================
+# ========== HELPERS ==========
 def get_presigned_url(filename):
     try:
         return s3.generate_presigned_url(
@@ -56,15 +54,7 @@ def is_admin():
 def is_provider():
     return 'usuario' in session and session.get('rol') == 2
 
-MONTH_NAMES = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
-}
-
-# =========================
-# LOGIN
-# =========================
+# ========== LOGIN ==========
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -90,16 +80,14 @@ def login():
             if user['rol'] == 1:
                 return redirect(url_for('dashboard_admin'))
 
-            # proveedor -> requerimientos
+            # Proveedor -> requerimientos
             return redirect(url_for('requerimientos_proveedor'))
 
         flash('Credenciales incorrectas')
 
     return render_template('login.html')
 
-# =========================
-# REGISTRO
-# =========================
+# ========== REGISTRO ==========
 @app.route('/registro', methods=['GET', 'POST'])
 def registro():
     if request.method == 'POST':
@@ -111,7 +99,6 @@ def registro():
 
         password_hash = generate_password_hash(contrasena)
 
-        # Campos REPSE/Contacto (si vienen vacíos no pasa nada)
         repse_numero = request.form.get('repse_numero')
         repse_folio = request.form.get('repse_folio')
         repse_aviso = request.form.get('repse_aviso')
@@ -127,7 +114,6 @@ def registro():
 
         conn = get_conn()
         cur = conn.cursor()
-
         try:
             cur.execute("""
                 INSERT INTO usuarios(
@@ -181,30 +167,28 @@ def requerimientos_proveedor():
     default_year = now.year
 
     if request.method == 'POST':
+        # ✅ BOTON "No se registrarán pedidos"
+        if request.form.get('skip_pedidos') == '1':
+            session['skip_pedidos'] = True
+            session.pop('active_month', None)
+            session.pop('active_year', None)
+            flash('Accediste sin registrar pedidos.')
+            return redirect(url_for('dashboard_proveedor'))
+
+        # Flujo normal (registrar pedidos)
         month = int(request.form.get('month') or default_month)
         year = int(request.form.get('year') or default_year)
-
-        action = (request.form.get('action') or '').strip()
-
-        # ✅ Caso: No se registrarán pedidos
-        if action == 'skip_pedidos':
-            session['active_month'] = month
-            session['active_year'] = year
-            flash('Continuaste sin registrar pedidos.')
-            # 🔥 Ahora manda a “Meses”
-            return redirect(url_for('meses_proveedor'))
-
-        # ✅ Caso: Registrar pedidos
         total = int(request.form.get('total') or 0)
-        if total <= 0:
-            flash('Indica cuántos pedidos tienes o usa "No se registrarán pedidos".')
-            return redirect(url_for('requerimientos_proveedor'))
 
         pedidos = []
         for i in range(1, total + 1):
             val = (request.form.get(f'pedido_{i}') or '').strip()
             if val:
                 pedidos.append(val)
+
+        if total <= 0:
+            flash('Indica cuántos pedidos tienes.')
+            return redirect(url_for('requerimientos_proveedor'))
 
         if len(pedidos) != total:
             flash('Debes llenar todos los números de pedido.')
@@ -213,116 +197,47 @@ def requerimientos_proveedor():
         conn = get_conn()
         cur = conn.cursor()
 
-        created = 0
         for pedido in pedidos:
             cur.execute("""
                 INSERT INTO projects(provider_id, name, created_at, completed, month, year, pedido_num)
                 VALUES(%s,%s,NOW(),0,%s,%s,%s)
                 ON CONFLICT (provider_id, month, year, pedido_num) DO NOTHING
             """, (user_id, f"Pedido {pedido}", month, year, pedido))
-            created += cur.rowcount
 
         conn.commit()
         cur.close()
         conn.close()
 
+        session['skip_pedidos'] = False
         session['active_month'] = month
         session['active_year'] = year
 
-        flash(f'Requerimientos guardados. Pedidos agregados: {created}')
-        # 🔥 Ahora manda a “Meses”
-        return redirect(url_for('meses_proveedor'))
-
-    # GET (solo render)
-    return render_template(
-        'requerimientos.html',
-        default_month=default_month,
-        default_year=default_year
-    )
-
-# ==========================================================
-# MESES PROVEEDOR (pantalla nueva)
-# ==========================================================
-@app.route('/proveedor/meses', methods=['GET', 'POST'])
-def meses_proveedor():
-    if not is_provider():
-        flash('Acceso denegado')
-        return redirect(url_for('login'))
-
-    user_id = session['user_id']
-
-    # Si el usuario elige un mes/año desde botón
-    if request.method == 'POST':
-        month = int(request.form.get('month'))
-        year = int(request.form.get('year'))
-        session['active_month'] = month
-        session['active_year'] = year
+        flash('Requerimientos guardados.')
         return redirect(url_for('dashboard_proveedor'))
 
-    # Traer meses/años donde existan pedidos (projects)
+    # GET
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
     cur.execute("""
         SELECT month, year, COUNT(*) AS total
         FROM projects
-        WHERE provider_id=%s AND month IS NOT NULL AND year IS NOT NULL
+        WHERE provider_id=%s AND pedido_num IS NOT NULL
         GROUP BY month, year
         ORDER BY year DESC, month DESC
+        LIMIT 12
     """, (user_id,))
-    rows = cur.fetchall()
+    resumen = cur.fetchall()
     cur.close()
     conn.close()
 
-    # Mes/año actual seleccionado (si viene de requerimientos)
-    active_month = session.get('active_month')
-    active_year = session.get('active_year')
-
-    # Si no hay nada guardado, usar mes actual
-    if not active_month or not active_year:
-        now = datetime.utcnow()
-        active_month = now.month
-        active_year = now.year
-        session['active_month'] = active_month
-        session['active_year'] = active_year
-
-    # Convertir a tarjetas amigables
-    meses = []
-    seen = set()
-    for r in rows:
-        m = r['month']
-        y = r['year']
-        if not m or not y:
-            continue
-        key = (m, y)
-        if key in seen:
-            continue
-        seen.add(key)
-        meses.append({
-            "month": m,
-            "year": y,
-            "name": MONTH_NAMES.get(m, str(m)),
-            "total": r['total']
-        })
-
-    # Siempre mostrar el mes/año activo aunque no tenga pedidos
-    if (active_month, active_year) not in seen:
-        meses.insert(0, {
-            "month": int(active_month),
-            "year": int(active_year),
-            "name": MONTH_NAMES.get(int(active_month), str(active_month)),
-            "total": 0
-        })
-
     return render_template(
-        'meses.html',
-        meses=meses,
-        active_month=int(active_month),
-        active_year=int(active_year)
+        'requerimientos.html',
+        default_month=default_month,
+        default_year=default_year,
+        resumen=resumen
     )
 
-# =========================
-# ADMIN DASHBOARD
-# =========================
+# ========== ADMIN DASHBOARD ==========
 @app.route('/admin/dashboard')
 def dashboard_admin():
     if not is_admin():
@@ -383,7 +298,7 @@ def accion(id, accion):
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
 
-# DELETE USER (borra S3 + BD)
+# DELETE USER (con borrado en S3)
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if not is_admin():
@@ -420,9 +335,24 @@ def delete_user():
 
     return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
 
-# =========================
-# PROVEEDOR DASHBOARD (filtrado por mes/año)
-# =========================
+# ---------- AJAX Reminder ----------
+@app.route('/admin/send_reminder', methods=['POST'], endpoint='send_reminder')
+def send_reminder():
+    if not is_admin():
+        return jsonify({'success': False, 'message': 'Acceso denegado'}), 403
+
+    data = request.get_json() or {}
+    provider_ids = data.get('provider_ids', [])
+    subject = data.get('subject', 'Recordatorio REPSE')
+    message = data.get('message', '')
+
+    if not provider_ids:
+        return jsonify({'success': False, 'message': 'No providers selected'}), 400
+
+    sent = len(provider_ids)
+    return jsonify({'success': True, 'sent': sent})
+
+# ========== PROVEEDOR DASHBOARD ==========
 @app.route('/proveedor/dashboard', methods=['GET', 'POST'])
 def dashboard_proveedor():
     if not is_provider():
@@ -431,7 +361,6 @@ def dashboard_proveedor():
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-
     cur.execute("SELECT * FROM usuarios WHERE usuario=%s", (session['usuario'],))
     user = cur.fetchone()
 
@@ -441,20 +370,16 @@ def dashboard_proveedor():
         flash('Tu cuenta aún no ha sido aprobada.')
         return redirect(url_for('login'))
 
-    # Si no hay mes/año activo, manda a meses
-    if 'active_month' not in session or 'active_year' not in session:
-        cur.close()
-        conn.close()
-        return redirect(url_for('meses_proveedor'))
-
-    active_month = int(session['active_month'])
-    active_year = int(session['active_year'])
+    # ✅ Si NO se saltó pedidos, y no hay mes/año activo -> requerimientos
+    if not session.get('skip_pedidos', False):
+        if 'active_month' not in session or 'active_year' not in session:
+            cur.close()
+            conn.close()
+            return redirect(url_for('requerimientos_proveedor'))
 
     # SUBIR / ACTUALIZAR DOCUMENTO
     if request.method == 'POST':
-        action = request.form.get('action')
-
-        if action in ('upload_doc', 'update_doc'):
+        if request.form.get('action') in ('upload_doc', 'update_doc'):
             project_id = int(request.form.get('project_id'))
             tipo = request.form.get('tipo_documento')
             archivo = request.files.get('documento')
@@ -466,51 +391,53 @@ def dashboard_proveedor():
                 if ext not in ['pdf', 'jpg', 'jpeg', 'png']:
                     flash('Tipo de archivo no permitido.')
                 else:
-                    # Validar que el proyecto sea del proveedor
-                    cur.execute("SELECT id FROM projects WHERE id=%s AND provider_id=%s", (project_id, user['id']))
-                    pr = cur.fetchone()
-                    if not pr:
-                        flash('Proyecto inválido.')
-                    else:
-                        # Si ya existía, borrar anterior para ese tipo (update)
-                        if action == 'update_doc':
-                            cur.execute("""
-                                SELECT id, ruta FROM documentos
-                                WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
-                                ORDER BY fecha_subida DESC
-                                LIMIT 1
-                            """, (user['id'], project_id, tipo))
-                            old = cur.fetchone()
-                            if old:
-                                try:
-                                    s3.delete_object(Bucket=BUCKET_NAME, Key=old['ruta'])
-                                except Exception as e:
-                                    print("Error borrando viejo en S3:", e)
-                                cur.execute("DELETE FROM documentos WHERE id=%s", (old['id'],))
+                    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{archivo.filename}"
 
-                        filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{archivo.filename}"
-
-                        s3.upload_fileobj(
-                            archivo,
-                            BUCKET_NAME,
-                            filename,
-                            ExtraArgs={'ACL': 'private'}
-                        )
-
+                    if request.form.get('action') == 'update_doc':
                         cur.execute("""
-                            INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
-                            VALUES(%s,%s,%s,%s,NOW(),%s)
-                        """, (user['id'], archivo.filename, filename, tipo, project_id))
+                            SELECT id, ruta FROM documentos
+                            WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
+                            ORDER BY fecha_subida DESC
+                            LIMIT 1
+                        """, (user['id'], project_id, tipo))
+                        old = cur.fetchone()
+                        if old:
+                            try:
+                                s3.delete_object(Bucket=BUCKET_NAME, Key=old['ruta'])
+                            except Exception as e:
+                                print("Error borrando viejo en S3:", e)
+                            cur.execute("DELETE FROM documentos WHERE id=%s", (old['id'],))
 
-                        conn.commit()
-                        flash('Documento guardado correctamente.')
+                    s3.upload_fileobj(
+                        archivo,
+                        BUCKET_NAME,
+                        filename,
+                        ExtraArgs={'ACL': 'private'}
+                    )
 
-    # Proyectos SOLO del mes/año seleccionado
-    cur.execute("""
-        SELECT * FROM projects
-        WHERE provider_id=%s AND month=%s AND year=%s
-        ORDER BY created_at DESC
-    """, (user['id'], active_month, active_year))
+                    cur.execute("""
+                        INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
+                        VALUES(%s,%s,%s,%s,NOW(),%s)
+                    """, (user['id'], archivo.filename, filename, tipo, project_id))
+                    conn.commit()
+                    flash('Documento guardado correctamente.')
+
+    # ✅ Proyectos
+    if session.get('skip_pedidos', False):
+        cur.execute("""
+            SELECT * FROM projects
+            WHERE provider_id=%s
+            ORDER BY created_at DESC
+        """, (user['id'],))
+    else:
+        active_month = int(session['active_month'])
+        active_year = int(session['active_year'])
+        cur.execute("""
+            SELECT * FROM projects
+            WHERE provider_id=%s AND month=%s AND year=%s
+            ORDER BY created_at DESC
+        """, (user['id'], active_month, active_year))
+
     projects = cur.fetchall()
 
     cur.execute("SELECT * FROM documentos WHERE usuario_id=%s ORDER BY fecha_subida DESC", (user['id'],))
@@ -537,13 +464,8 @@ def dashboard_proveedor():
         projects=projects,
         docs_by_project=docs_by_project,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
-        documentos_subidos=documentos_subidos,
-        active_month=active_month,
-        active_year=active_year,
-        month_name=MONTH_NAMES.get(active_month, str(active_month))
+        documentos_subidos=documentos_subidos
     )
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ('1', 'true')
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    app.run()

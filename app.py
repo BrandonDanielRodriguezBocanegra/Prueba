@@ -38,7 +38,7 @@ DOCUMENTOS_OBLIGATORIOS = [
 ]
 
 # ========== LOGIN ==========
-@app.route('/', methods=['GET','POST'])
+@app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         usuario = request.form.get('usuario')
@@ -70,7 +70,7 @@ def login():
     return render_template('login.html')
 
 # ========== REGISTRO ==========
-@app.route('/registro', methods=['GET','POST'])
+@app.route('/registro', methods=['GET', 'POST'])
 def registro():
     if request.method == 'POST':
         nombre = request.form.get('nombre')
@@ -122,6 +122,19 @@ def dashboard_admin():
         flash('Acceso denegado')
         return redirect(url_for('login'))
 
+    # ---- filtros (GET) ----
+    selected_provider_ids = request.args.get('providers', '').strip()  # "1,2,3"
+    selected_provider_ids_set = set()
+    if selected_provider_ids:
+        try:
+            selected_provider_ids_set = {int(x) for x in selected_provider_ids.split(',') if x.strip().isdigit()}
+        except Exception:
+            selected_provider_ids_set = set()
+
+    selected_year = request.args.get('year', '').strip()   # "2026"
+    selected_month = request.args.get('month', '').strip() # "01"
+    q = request.args.get('q', '').strip().lower()
+
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
@@ -129,27 +142,94 @@ def dashboard_admin():
     pendientes = cur.fetchall()
 
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2 ORDER BY nombre ASC")
-    proveedores = cur.fetchall()
+    proveedores_all = cur.fetchall()
 
     cur.execute("SELECT * FROM projects ORDER BY created_at DESC")
-    projects = cur.fetchall()
+    projects_all = cur.fetchall()
 
     cur.execute("SELECT * FROM documentos ORDER BY fecha_subida DESC")
-    docs = cur.fetchall()
+    docs_all = cur.fetchall()
 
     cur.close()
     conn.close()
 
+    # ---- años disponibles para dropdown ----
+    years_available = sorted(
+        {p['created_at'].year for p in projects_all if p.get('created_at')},
+        reverse=True
+    )
+
+    # ---- filtrar proveedores por multi-select + búsqueda ----
+    proveedores_filtered = []
+    for p in proveedores_all:
+        pid = p['id']
+        if selected_provider_ids_set and pid not in selected_provider_ids_set:
+            continue
+
+        if q:
+            blob = f"{p.get('nombre','')} {p.get('usuario','')} {p.get('correo','')}".lower()
+            # si no matchea el proveedor, igual puede matchear por proyecto; lo veremos abajo
+            # aquí no lo descartamos aún por q, lo dejamos y lo filtramos por proyectos también
+        proveedores_filtered.append(p)
+
+    # ---- filtrar proyectos por proveedor + mes/año + búsqueda ----
+    projects_filtered = []
+    for pr in projects_all:
+        provider_id = pr.get('provider_id')
+        if selected_provider_ids_set and provider_id not in selected_provider_ids_set:
+            continue
+
+        ca = pr.get('created_at')
+        if ca and selected_year:
+            if str(ca.year) != str(selected_year):
+                continue
+        if ca and selected_month:
+            # selected_month viene "01".."12"
+            if f"{ca.month:02d}" != str(selected_month).zfill(2):
+                continue
+
+        if q:
+            # búsqueda en proveedor + proyecto
+            prov = next((x for x in proveedores_all if x['id'] == provider_id), None)
+            blob = f"{(prov.get('nombre','') if prov else '')} {(prov.get('usuario','') if prov else '')} {(prov.get('correo','') if prov else '')} {pr.get('name','')}".lower()
+            if q not in blob:
+                continue
+
+        projects_filtered.append(pr)
+
+    # Si hay búsqueda, queremos mostrar SOLO proveedores que tengan proyectos que pasaron filtros (o que el proveedor matchee)
+    if q:
+        providers_with_visible_projects = {pr['provider_id'] for pr in projects_filtered}
+        proveedores_filtered = [
+            p for p in proveedores_filtered
+            if (p['id'] in providers_with_visible_projects) or (q in f"{p.get('nombre','')} {p.get('usuario','')} {p.get('correo','')}".lower())
+        ]
+
+    # ---- filtrar documentos por projects visibles ----
+    visible_project_ids = {p['id'] for p in projects_filtered}
+    docs_filtered = [d for d in docs_all if d.get('project_id') in visible_project_ids]
+
+    # ---- agrupar docs por usuario -> proyecto ----
     documentos_por_usuario = {}
-    for d in docs:
+    for d in docs_filtered:
         documentos_por_usuario.setdefault(d['usuario_id'], {}).setdefault(d['project_id'], []).append(d)
 
     return render_template(
         'dashboard_admin.html',
         pendientes=pendientes,
-        proveedores=proveedores,
-        proyectos=projects,
+
+        # filtros
+        proveedores_all=proveedores_all,
+        proveedores=proveedores_filtered,
+        proyectos=projects_filtered,
         documentos_por_usuario=documentos_por_usuario,
+
+        years_available=years_available,
+        selected_year=selected_year,
+        selected_month=selected_month,
+        selected_q=request.args.get('q', ''),
+        selected_providers=sorted(list(selected_provider_ids_set)),
+
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
         get_presigned_url=get_presigned_url
     )
@@ -191,7 +271,6 @@ def delete_user():
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    # borrar archivos S3 del usuario
     cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
     docs = cur.fetchall()
     for d in docs:
@@ -210,7 +289,7 @@ def delete_user():
 
     return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
 
-# ✅ NUEVO: DELETE PROJECT (admin)
+# DELETE PROJECT (admin)
 @app.route('/admin/delete_project', methods=['POST'])
 def delete_project():
     if 'usuario' not in session or session.get('rol') != 1:
@@ -225,20 +304,15 @@ def delete_project():
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    # 1) Traer documentos del proyecto para borrarlos del bucket
     cur.execute("SELECT ruta FROM documentos WHERE project_id=%s", (project_id,))
     docs = cur.fetchall()
-
     for d in docs:
         try:
             s3.delete_object(Bucket=BUCKET_NAME, Key=d['ruta'])
         except Exception as e:
             print("Error eliminando archivo S3:", e)
 
-    # 2) Borrar docs de BD
     cur.execute("DELETE FROM documentos WHERE project_id=%s", (project_id,))
-
-    # 3) Borrar proyecto de BD
     cur.execute("DELETE FROM projects WHERE id=%s", (project_id,))
 
     conn.commit()
@@ -258,7 +332,6 @@ def send_reminder():
     if not provider_ids:
         return jsonify({'success': False, 'message': 'No providers selected'}), 400
 
-    # Simulado
     return jsonify({'success': True, 'sent': len(provider_ids)})
 
 # ========== PROVEEDOR DASHBOARD ==========

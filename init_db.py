@@ -1,20 +1,18 @@
 # init_db.py
 import os
-import psycopg2
+import psycopg
 from werkzeug.security import generate_password_hash
 
 DB_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://repse_db_user:DdWJ7DrHXlVnC96eAxxnqNgbjTgFGS0f@dpg-d4c15c6r433s73d7o3dg-a.oregon-postgres.render.com/repse_db"
+    "postgresql://repse_db_user:YOURPASS@YOURHOST/repse_db"
 )
 
-conn = psycopg2.connect(DB_URL)
+conn = psycopg.connect(DB_URL)
 c = conn.cursor()
 
-# -------------------------
-# TABLA USUARIOS
-# -------------------------
-c.execute("""
+# --- Usuarios ---
+c.execute('''
 CREATE TABLE IF NOT EXISTS usuarios(
     id SERIAL PRIMARY KEY,
     nombre TEXT NOT NULL,
@@ -23,74 +21,72 @@ CREATE TABLE IF NOT EXISTS usuarios(
     password TEXT NOT NULL,
     rol INTEGER NOT NULL,
     estado TEXT NOT NULL,
+
     mail_password TEXT,
 
-    -- NUEVOS CAMPOS REPSE (proveedor)
+    -- REPSE
     repse_numero TEXT,
     repse_folio TEXT,
     repse_aviso TEXT,
-    repse_fecha_aviso DATE,
-    repse_vigencia DATE,
+    repse_fecha_aviso TEXT,
+    repse_vigencia TEXT,
     repse_rfc TEXT,
     repse_regimen TEXT,
     repse_objeto TEXT,
+
+    -- CONTACTO
     contacto_nombre TEXT,
     contacto_tel TEXT,
     contacto_correo TEXT
 )
-""")
+''')
 
-# Si la tabla ya existía antes, asegura columnas con ALTER TABLE (no falla si ya existen)
-alter_cols = [
-    "repse_numero TEXT",
-    "repse_folio TEXT",
-    "repse_aviso TEXT",
-    "repse_fecha_aviso DATE",
-    "repse_vigencia DATE",
-    "repse_rfc TEXT",
-    "repse_regimen TEXT",
-    "repse_objeto TEXT",
-    "contacto_nombre TEXT",
-    "contacto_tel TEXT",
-    "contacto_correo TEXT",
-    "mail_password TEXT"
-]
-
-for coldef in alter_cols:
-    colname = coldef.split()[0]
-    c.execute(f"ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS {coldef};")
-
-# -------------------------
-# TABLA PROYECTOS
-# -------------------------
-c.execute("""
+# --- Proyectos ---
+c.execute('''
 CREATE TABLE IF NOT EXISTS projects(
     id SERIAL PRIMARY KEY,
-    provider_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    provider_id INTEGER NOT NULL REFERENCES usuarios(id),
     name TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    completed INTEGER DEFAULT 0
-)
-""")
+    completed INTEGER DEFAULT 0,
 
-# -------------------------
-# TABLA DOCUMENTOS
-# -------------------------
-c.execute("""
+    -- NUEVO: agrupación por mes/año y pedido
+    month INTEGER,
+    year INTEGER,
+    pedido_num TEXT
+)
+''')
+
+# Unique para evitar duplicados del mismo pedido en el mismo mes/año por proveedor
+c.execute('''
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_provider_month_year_pedido'
+    ) THEN
+        ALTER TABLE projects
+        ADD CONSTRAINT uq_provider_month_year_pedido
+        UNIQUE (provider_id, month, year, pedido_num);
+    END IF;
+END$$;
+''')
+
+# --- Documentos ---
+c.execute('''
 CREATE TABLE IF NOT EXISTS documentos(
     id SERIAL PRIMARY KEY,
-    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
     nombre_archivo TEXT NOT NULL,
     ruta TEXT NOT NULL,
     fecha_subida TIMESTAMP NOT NULL DEFAULT NOW(),
     tipo_documento TEXT,
-    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE
+    project_id INTEGER REFERENCES projects(id)
 )
-""")
+''')
 
-# -------------------------
+# ============================================================
 # CREAR ADMIN SI NO EXISTE
-# -------------------------
+# ============================================================
 print("Verificando existencia del usuario administrador...")
 
 c.execute("SELECT 1 FROM usuarios WHERE usuario = %s", ('admin',))
@@ -98,7 +94,6 @@ admin = c.fetchone()
 
 if not admin:
     password_hash = generate_password_hash("admin123")
-
     c.execute("""
         INSERT INTO usuarios (nombre, usuario, correo, password, rol, estado)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -110,7 +105,6 @@ if not admin:
         1,
         "aprobado"
     ))
-
     print(">>> Usuario admin creado correctamente")
     print(">>> Usuario: admin")
     print(">>> Password: admin123")

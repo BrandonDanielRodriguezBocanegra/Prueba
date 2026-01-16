@@ -448,7 +448,7 @@ $('#form-reminder').on('submit', function(e){
    ========================= */
 $('.delete-user-btn').click(function(){
     if(!confirm('¿Eliminar usuario?')) return;
-    let id = $(this).data('id');
+    let id = $(this).data('id');  
 
     $.ajax({
         url: "{{ url_for('delete_user') }}",

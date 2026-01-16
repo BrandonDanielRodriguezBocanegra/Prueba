@@ -3,16 +3,24 @@ import os
 import psycopg
 from werkzeug.security import generate_password_hash
 
+# ============================================================
+# CONFIG
+# ============================================================
 DB_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://repse_db_user:YOURPASS@YOURHOST/repse_db"
 )
 
+# ============================================================
+# CONNECT
+# ============================================================
 conn = psycopg.connect(DB_URL)
 c = conn.cursor()
 
-# --- Usuarios ---
-c.execute('''
+# ============================================================
+# TABLE: usuarios
+# ============================================================
+c.execute("""
 CREATE TABLE IF NOT EXISTS usuarios(
     id SERIAL PRIMARY KEY,
     nombre TEXT NOT NULL,
@@ -39,10 +47,12 @@ CREATE TABLE IF NOT EXISTS usuarios(
     contacto_tel TEXT,
     contacto_correo TEXT
 )
-''')
+""")
 
-# --- Proyectos ---
-c.execute('''
+# ============================================================
+# TABLE: projects
+# ============================================================
+c.execute("""
 CREATE TABLE IF NOT EXISTS projects(
     id SERIAL PRIMARY KEY,
     provider_id INTEGER NOT NULL REFERENCES usuarios(id),
@@ -55,10 +65,10 @@ CREATE TABLE IF NOT EXISTS projects(
     year INTEGER,
     pedido_num TEXT
 )
-''')
+""")
 
 # Unique para evitar duplicados del mismo pedido en el mismo mes/año por proveedor
-c.execute('''
+c.execute("""
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -69,10 +79,12 @@ BEGIN
         UNIQUE (provider_id, month, year, pedido_num);
     END IF;
 END$$;
-''')
+""")
 
-# --- Documentos ---
-c.execute('''
+# ============================================================
+# TABLE: documentos
+# ============================================================
+c.execute("""
 CREATE TABLE IF NOT EXISTS documentos(
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
@@ -82,10 +94,10 @@ CREATE TABLE IF NOT EXISTS documentos(
     tipo_documento TEXT,
     project_id INTEGER REFERENCES projects(id)
 )
-''')
+""")
 
 # ============================================================
-# CREAR ADMIN SI NO EXISTE
+# CREATE ADMIN IF NOT EXISTS
 # ============================================================
 print("Verificando existencia del usuario administrador...")
 
@@ -94,6 +106,7 @@ admin = c.fetchone()
 
 if not admin:
     password_hash = generate_password_hash("admin123")
+
     c.execute("""
         INSERT INTO usuarios (nombre, usuario, correo, password, rol, estado)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -102,15 +115,19 @@ if not admin:
         "admin",
         "admin@empresa.com",
         password_hash,
-        1,
+        1,                # Administrador
         "aprobado"
     ))
+
     print(">>> Usuario admin creado correctamente")
     print(">>> Usuario: admin")
     print(">>> Password: admin123")
 else:
     print(">>> El usuario admin ya existe")
 
+# ============================================================
+# COMMIT & CLOSE
+# ============================================================
 conn.commit()
 c.close()
 conn.close()

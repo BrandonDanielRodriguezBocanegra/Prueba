@@ -20,6 +20,10 @@
       padding:20px;
       box-shadow:0 6px 18px rgba(0,0,0,0.12);
     }
+    .hint{
+      font-size: .92rem;
+      color:#555;
+    }
   </style>
 </head>
 <body>
@@ -37,7 +41,8 @@
 
   <div class="card mb-3">
     <h5 class="mb-2">Define tus pedidos del mes</h5>
-    <p class="mb-0">Selecciona mes/año y escribe cuántos pedidos tienes. Se crearán “espacios” para capturar los números.</p>
+    <p class="mb-1">Selecciona mes/año. Si tienes pedidos, indica cuántos y captura sus números.</p>
+    <p class="mb-0 hint">Si este mes no registrarás pedidos, usa el botón “No se registrarán pedidos”.</p>
   </div>
 
   <div class="card mb-3">
@@ -59,7 +64,7 @@
 
         <div class="col-md-4">
           <label class="form-label">¿Cuántos pedidos?</label>
-          <input type="number" class="form-control" name="total" id="total" min="1" max="200" placeholder="Ej. 8" required>
+          <input type="number" class="form-control" name="total" id="total" min="1" max="200" placeholder="Ej. 8">
         </div>
       </div>
 
@@ -67,10 +72,22 @@
 
       <div id="pedidosContainer"></div>
 
-      <div class="d-flex gap-2 mt-3">
+      <div class="d-flex flex-wrap gap-2 mt-3">
         <button type="button" class="btn btn-outline-dark" id="btnGenerar">Generar campos</button>
-        <button type="submit" class="btn btn-primary">Siguiente</button>
+
+        <!-- ✅ Registrar pedidos -->
+        <button type="submit" class="btn btn-primary" onclick="document.getElementById('action').value='save_pedidos';">
+          Siguiente
+        </button>
+
+        <!-- ✅ Saltar pedidos -->
+        <button type="submit" class="btn btn-outline-secondary"
+                onclick="document.getElementById('action').value='skip_pedidos';">
+          No se registrarán pedidos
+        </button>
       </div>
+
+      <input type="hidden" name="action" id="action" value="save_pedidos">
     </form>
   </div>
 
@@ -94,38 +111,35 @@
     const cont = document.getElementById('pedidosContainer');
     cont.innerHTML = '';
 
+    if(!n || n < 1) return;
+
     const wrap = document.createElement('div');
     wrap.className = 'row g-2';
 
     for(let i=1;i<=n;i++){
       const col = document.createElement('div');
       col.className = 'col-md-6';
-
       col.innerHTML = `
         <label class="form-label">Pedido #${i}</label>
         <input class="form-control" name="pedido_${i}" required placeholder="Ej. 123456">
       `;
       wrap.appendChild(col);
     }
-
     cont.appendChild(wrap);
   }
 
   document.getElementById('btnGenerar').addEventListener('click', function(){
     const n = parseInt(document.getElementById('total').value || '0', 10);
     if(!n || n < 1){
-      alert('Escribe cuántos pedidos tienes.');
+      alert('Escribe cuántos pedidos tienes o presiona "No se registrarán pedidos".');
       return;
     }
     buildInputs(n);
   });
 
-  // Si cambian el total, regenerar para que sea consistente
   document.getElementById('total').addEventListener('change', function(){
     const n = parseInt(this.value || '0', 10);
-    if(n && n >= 1){
-      buildInputs(n);
-    }
+    buildInputs(n);
   });
 </script>
 

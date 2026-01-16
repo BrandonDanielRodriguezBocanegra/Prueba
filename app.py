@@ -37,7 +37,9 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
-# ========== HELPERS ==========
+# =========================
+# HELPERS
+# =========================
 def get_presigned_url(filename):
     try:
         return s3.generate_presigned_url(
@@ -54,7 +56,9 @@ def is_admin():
 def is_provider():
     return 'usuario' in session and session.get('rol') == 2
 
-# ========== LOGIN ==========
+# =========================
+# LOGIN
+# =========================
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -80,14 +84,16 @@ def login():
             if user['rol'] == 1:
                 return redirect(url_for('dashboard_admin'))
 
-            # ✅ PROVEEDOR: antes de dashboard, pasa por requerimientos
+            # ✅ proveedor pasa por requerimientos
             return redirect(url_for('requerimientos_proveedor'))
 
         flash('Credenciales incorrectas')
 
     return render_template('login.html')
 
-# ========== REGISTRO ==========
+# =========================
+# REGISTRO
+# =========================
 @app.route('/registro', methods=['GET', 'POST'])
 def registro():
     if request.method == 'POST':
@@ -99,7 +105,7 @@ def registro():
 
         password_hash = generate_password_hash(contrasena)
 
-        # Campos REPSE/Contacto (solo proveedor, pero si vienen vacíos no pasa nada)
+        # Campos REPSE/Contacto (si vienen vacíos no pasa nada)
         repse_numero = request.form.get('repse_numero')
         repse_folio = request.form.get('repse_folio')
         repse_aviso = request.form.get('repse_aviso')
@@ -155,7 +161,7 @@ def logout():
     return redirect(url_for('login'))
 
 # ==========================================================
-# ✅ REQUERIMIENTOS PROVEEDOR (pantalla antes del dashboard)
+# REQUERIMIENTOS PROVEEDOR (pantalla antes del dashboard)
 # ==========================================================
 @app.route('/proveedor/requerimientos', methods=['GET', 'POST'])
 def requerimientos_proveedor():
@@ -171,7 +177,22 @@ def requerimientos_proveedor():
     if request.method == 'POST':
         month = int(request.form.get('month') or default_month)
         year = int(request.form.get('year') or default_year)
+
+        action = (request.form.get('action') or '').strip()
+
+        # ✅ Caso: No se registrarán pedidos
+        if action == 'skip_pedidos':
+            session['active_month'] = month
+            session['active_year'] = year
+            flash('Continuaste sin registrar pedidos.')
+            return redirect(url_for('dashboard_proveedor'))
+
+        # ✅ Caso: Registrar pedidos
         total = int(request.form.get('total') or 0)
+
+        if total <= 0:
+            flash('Indica cuántos pedidos tienes o usa "No se registrarán pedidos".')
+            return redirect(url_for('requerimientos_proveedor'))
 
         pedidos = []
         for i in range(1, total + 1):
@@ -179,44 +200,33 @@ def requerimientos_proveedor():
             if val:
                 pedidos.append(val)
 
-        if total <= 0:
-            flash('Indica cuántos pedidos tienes.')
-            return redirect(url_for('requerimientos_proveedor'))
-
         if len(pedidos) != total:
             flash('Debes llenar todos los números de pedido.')
             return redirect(url_for('requerimientos_proveedor'))
 
         conn = get_conn()
-        cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+        cur = conn.cursor()
 
-        # Crear proyectos por cada pedido (si no existen)
         created = 0
         for pedido in pedidos:
-            try:
-                cur.execute("""
-                    INSERT INTO projects(provider_id, name, created_at, completed, month, year, pedido_num)
-                    VALUES(%s,%s,NOW(),0,%s,%s,%s)
-                    ON CONFLICT (provider_id, month, year, pedido_num) DO NOTHING
-                """, (user_id, f"Pedido {pedido}", month, year, pedido))
-                created += cur.rowcount
-            except Exception:
-                # si algo falla en uno, se verá abajo; hacemos rollback global si truena
-                raise
+            cur.execute("""
+                INSERT INTO projects(provider_id, name, created_at, completed, month, year, pedido_num)
+                VALUES(%s,%s,NOW(),0,%s,%s,%s)
+                ON CONFLICT (provider_id, month, year, pedido_num) DO NOTHING
+            """, (user_id, f"Pedido {pedido}", month, year, pedido))
+            created += cur.rowcount
 
         conn.commit()
+        cur.close()
+        conn.close()
 
-        # Guardar selección actual en sesión (para filtrar en dashboard)
         session['active_month'] = month
         session['active_year'] = year
 
         flash(f'Requerimientos guardados. Pedidos agregados: {created}')
-        cur.close()
-        conn.close()
-
         return redirect(url_for('dashboard_proveedor'))
 
-    # GET: Mostrar si ya existen pedidos del mes/año actual (opcional)
+    # GET: historial (solo para mostrar)
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
     cur.execute("""
@@ -238,7 +248,9 @@ def requerimientos_proveedor():
         resumen=resumen
     )
 
-# ========== ADMIN DASHBOARD ==========
+# =========================
+# ADMIN DASHBOARD
+# =========================
 @app.route('/admin/dashboard')
 def dashboard_admin():
     if not is_admin():
@@ -299,7 +311,7 @@ def accion(id, accion):
     flash('Operación realizada.')
     return redirect(url_for('dashboard_admin'))
 
-# DELETE USER (con borrado en S3)
+# DELETE USER (borra S3 + BD)
 @app.route('/admin/delete_user', methods=['POST'])
 def delete_user():
     if not is_admin():
@@ -317,7 +329,6 @@ def delete_user():
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    # Obtener documentos del usuario para borrarlos del bucket
     cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
     docs = cur.fetchall()
 
@@ -351,11 +362,13 @@ def send_reminder():
     if not provider_ids:
         return jsonify({'success': False, 'message': 'No providers selected'}), 400
 
-    # Aquí tú pondrás luego tu lógica real de SMTP/Outlook.
+    # Aquí va tu lógica real de correo (Outlook/SMTP) cuando la conectes
     sent = len(provider_ids)
     return jsonify({'success': True, 'sent': sent})
 
-# ========== PROVEEDOR DASHBOARD ==========
+# =========================
+# PROVEEDOR DASHBOARD
+# =========================
 @app.route('/proveedor/dashboard', methods=['GET', 'POST'])
 def dashboard_proveedor():
     if not is_provider():
@@ -364,6 +377,7 @@ def dashboard_proveedor():
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+
     cur.execute("SELECT * FROM usuarios WHERE usuario=%s", (session['usuario'],))
     user = cur.fetchone()
 
@@ -382,9 +396,11 @@ def dashboard_proveedor():
     active_month = int(session['active_month'])
     active_year = int(session['active_year'])
 
-    # SUBIR/ACTUALIZAR DOCUMENTO
+    # SUBIR / ACTUALIZAR DOCUMENTO
     if request.method == 'POST':
-        if request.form.get('action') in ('upload_doc', 'update_doc'):
+        action = request.form.get('action')
+
+        if action in ('upload_doc', 'update_doc'):
             project_id = int(request.form.get('project_id'))
             tipo = request.form.get('tipo_documento')
             archivo = request.files.get('documento')
@@ -396,16 +412,14 @@ def dashboard_proveedor():
                 if ext not in ['pdf', 'jpg', 'jpeg', 'png']:
                     flash('Tipo de archivo no permitido.')
                 else:
-                    # Verificamos que el project pertenezca al proveedor
-                    cur.execute("SELECT * FROM projects WHERE id=%s AND provider_id=%s", (project_id, user['id']))
+                    # Validar que el proyecto sea del proveedor
+                    cur.execute("SELECT id FROM projects WHERE id=%s AND provider_id=%s", (project_id, user['id']))
                     pr = cur.fetchone()
                     if not pr:
                         flash('Proyecto inválido.')
                     else:
-                        filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{archivo.filename}"
-
-                        # Si es update, borrar anterior (S3 y BD) de ese tipo/doc en ese proyecto
-                        if request.form.get('action') == 'update_doc':
+                        # Si ya existía, borrar anterior para ese tipo (update)
+                        if action == 'update_doc':
                             cur.execute("""
                                 SELECT id, ruta FROM documentos
                                 WHERE usuario_id=%s AND project_id=%s AND tipo_documento=%s
@@ -420,7 +434,8 @@ def dashboard_proveedor():
                                     print("Error borrando viejo en S3:", e)
                                 cur.execute("DELETE FROM documentos WHERE id=%s", (old['id'],))
 
-                        # Subir a S3
+                        filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{archivo.filename}"
+
                         s3.upload_fileobj(
                             archivo,
                             BUCKET_NAME,
@@ -428,15 +443,15 @@ def dashboard_proveedor():
                             ExtraArgs={'ACL': 'private'}
                         )
 
-                        # Insert BD
                         cur.execute("""
                             INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
                             VALUES(%s,%s,%s,%s,NOW(),%s)
                         """, (user['id'], archivo.filename, filename, tipo, project_id))
+
                         conn.commit()
                         flash('Documento guardado correctamente.')
 
-    # Solo proyectos del mes/año activo (los pedidos)
+    # Proyectos SOLO del mes/año seleccionado
     cur.execute("""
         SELECT * FROM projects
         WHERE provider_id=%s AND month=%s AND year=%s
@@ -474,4 +489,6 @@ def dashboard_proveedor():
     )
 
 if __name__ == '__main__':
-    app.run()
+    port = int(os.environ.get('PORT', 5000))
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ('1', 'true')
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)

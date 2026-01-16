@@ -56,6 +56,12 @@ def is_admin():
 def is_provider():
     return 'usuario' in session and session.get('rol') == 2
 
+MONTH_NAMES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+}
+
 # =========================
 # LOGIN
 # =========================
@@ -84,7 +90,7 @@ def login():
             if user['rol'] == 1:
                 return redirect(url_for('dashboard_admin'))
 
-            # ✅ proveedor pasa por requerimientos
+            # proveedor -> requerimientos
             return redirect(url_for('requerimientos_proveedor'))
 
         flash('Credenciales incorrectas')
@@ -161,7 +167,7 @@ def logout():
     return redirect(url_for('login'))
 
 # ==========================================================
-# REQUERIMIENTOS PROVEEDOR (pantalla antes del dashboard)
+# REQUERIMIENTOS PROVEEDOR
 # ==========================================================
 @app.route('/proveedor/requerimientos', methods=['GET', 'POST'])
 def requerimientos_proveedor():
@@ -185,11 +191,11 @@ def requerimientos_proveedor():
             session['active_month'] = month
             session['active_year'] = year
             flash('Continuaste sin registrar pedidos.')
-            return redirect(url_for('dashboard_proveedor'))
+            # 🔥 Ahora manda a “Meses”
+            return redirect(url_for('meses_proveedor'))
 
         # ✅ Caso: Registrar pedidos
         total = int(request.form.get('total') or 0)
-
         if total <= 0:
             flash('Indica cuántos pedidos tienes o usa "No se registrarán pedidos".')
             return redirect(url_for('requerimientos_proveedor'))
@@ -224,28 +230,94 @@ def requerimientos_proveedor():
         session['active_year'] = year
 
         flash(f'Requerimientos guardados. Pedidos agregados: {created}')
+        # 🔥 Ahora manda a “Meses”
+        return redirect(url_for('meses_proveedor'))
+
+    # GET (solo render)
+    return render_template(
+        'requerimientos.html',
+        default_month=default_month,
+        default_year=default_year
+    )
+
+# ==========================================================
+# MESES PROVEEDOR (pantalla nueva)
+# ==========================================================
+@app.route('/proveedor/meses', methods=['GET', 'POST'])
+def meses_proveedor():
+    if not is_provider():
+        flash('Acceso denegado')
+        return redirect(url_for('login'))
+
+    user_id = session['user_id']
+
+    # Si el usuario elige un mes/año desde botón
+    if request.method == 'POST':
+        month = int(request.form.get('month'))
+        year = int(request.form.get('year'))
+        session['active_month'] = month
+        session['active_year'] = year
         return redirect(url_for('dashboard_proveedor'))
 
-    # GET: historial (solo para mostrar)
+    # Traer meses/años donde existan pedidos (projects)
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
     cur.execute("""
         SELECT month, year, COUNT(*) AS total
         FROM projects
-        WHERE provider_id=%s AND pedido_num IS NOT NULL
+        WHERE provider_id=%s AND month IS NOT NULL AND year IS NOT NULL
         GROUP BY month, year
         ORDER BY year DESC, month DESC
-        LIMIT 12
     """, (user_id,))
-    resumen = cur.fetchall()
+    rows = cur.fetchall()
     cur.close()
     conn.close()
 
+    # Mes/año actual seleccionado (si viene de requerimientos)
+    active_month = session.get('active_month')
+    active_year = session.get('active_year')
+
+    # Si no hay nada guardado, usar mes actual
+    if not active_month or not active_year:
+        now = datetime.utcnow()
+        active_month = now.month
+        active_year = now.year
+        session['active_month'] = active_month
+        session['active_year'] = active_year
+
+    # Convertir a tarjetas amigables
+    meses = []
+    seen = set()
+    for r in rows:
+        m = r['month']
+        y = r['year']
+        if not m or not y:
+            continue
+        key = (m, y)
+        if key in seen:
+            continue
+        seen.add(key)
+        meses.append({
+            "month": m,
+            "year": y,
+            "name": MONTH_NAMES.get(m, str(m)),
+            "total": r['total']
+        })
+
+    # Siempre mostrar el mes/año activo aunque no tenga pedidos
+    if (active_month, active_year) not in seen:
+        meses.insert(0, {
+            "month": int(active_month),
+            "year": int(active_year),
+            "name": MONTH_NAMES.get(int(active_month), str(active_month)),
+            "total": 0
+        })
+
     return render_template(
-        'requerimientos.html',
-        default_month=default_month,
-        default_year=default_year,
-        resumen=resumen
+        'meses.html',
+        meses=meses,
+        active_month=int(active_month),
+        active_year=int(active_year)
     )
 
 # =========================
@@ -348,26 +420,8 @@ def delete_user():
 
     return jsonify({'success': True, 'msg': 'Usuario eliminado correctamente'})
 
-# ---------- AJAX Reminder ----------
-@app.route('/admin/send_reminder', methods=['POST'], endpoint='send_reminder')
-def send_reminder():
-    if not is_admin():
-        return jsonify({'success': False, 'message': 'Acceso denegado'}), 403
-
-    data = request.get_json() or {}
-    provider_ids = data.get('provider_ids', [])
-    subject = data.get('subject', 'Recordatorio REPSE')
-    message = data.get('message', '')
-
-    if not provider_ids:
-        return jsonify({'success': False, 'message': 'No providers selected'}), 400
-
-    # Aquí va tu lógica real de correo (Outlook/SMTP) cuando la conectes
-    sent = len(provider_ids)
-    return jsonify({'success': True, 'sent': sent})
-
 # =========================
-# PROVEEDOR DASHBOARD
+# PROVEEDOR DASHBOARD (filtrado por mes/año)
 # =========================
 @app.route('/proveedor/dashboard', methods=['GET', 'POST'])
 def dashboard_proveedor():
@@ -387,11 +441,11 @@ def dashboard_proveedor():
         flash('Tu cuenta aún no ha sido aprobada.')
         return redirect(url_for('login'))
 
-    # Si no eligió mes/año (no pasó por requerimientos), lo mandamos
+    # Si no hay mes/año activo, manda a meses
     if 'active_month' not in session or 'active_year' not in session:
         cur.close()
         conn.close()
-        return redirect(url_for('requerimientos_proveedor'))
+        return redirect(url_for('meses_proveedor'))
 
     active_month = int(session['active_month'])
     active_year = int(session['active_year'])
@@ -485,7 +539,8 @@ def dashboard_proveedor():
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
         documentos_subidos=documentos_subidos,
         active_month=active_month,
-        active_year=active_year
+        active_year=active_year,
+        month_name=MONTH_NAMES.get(active_month, str(active_month))
     )
 
 if __name__ == '__main__':

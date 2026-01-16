@@ -2,34 +2,83 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Requerimientos - REPSE</title>
+  <title>Proveedor - REPSE</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
   <style>
-    body{
+    body {
       background: linear-gradient(135deg, #ff6a00, #ff007b, #6600ff);
       background-size: 300% 300%;
       animation: gradientShift 10s ease infinite;
-      color:#fff;
-      min-height:100vh;
+      color: #fff;
+      min-height: 100vh;
     }
-    @keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
-    .card{
-      background: rgba(255,255,255,0.95);
-      color:#333;
-      border-radius:12px;
-      padding:20px;
-      box-shadow:0 6px 18px rgba(0,0,0,0.12);
+    @keyframes gradientShift {
+      0% { background-position:0% 50%; }
+      50% { background-position:100% 50%; }
+      100% { background-position:0% 50%; }
     }
-    .hint{
-      font-size: .92rem;
-      color:#555;
+
+    .card {
+      background: rgba(255,255,255,0.92);
+      color: #333;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 10px 22px rgba(0,0,0,.15);
     }
+
+    .table th { background-color: #ff6a00; color: white; }
+    .muted { color: rgba(255,255,255,.85); }
+    .top-actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .logout-btn {
+      background-color: rgba(255,255,255,0.2);
+      color: #fff;
+      border: 1px solid #fff;
+      transition: all 0.3s ease;
+    }
+    .logout-btn:hover {
+      background-color: #fff;
+      color: #6600ff;
+      border-color: #fff;
+    }
+
+    .file-label {
+      font-size: .9rem;
+      color: #333;
+      margin-top: 6px;
+    }
+
+    .badge-soft {
+      background: rgba(255,255,255,0.25);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: .9rem;
+    }
+
+    .table td { vertical-align: middle; }
+    .btn-sm { white-space: nowrap; }
   </style>
 </head>
-<body>
 
-<div class="container mt-4" style="max-width: 850px;">
-  <h3 class="text-white mb-3">Requerimientos</h3>
+<body>
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="text-white mb-1">Dashboard Proveedor</h3>
+      <div class="muted">
+        Mes activo: <span class="badge-soft">{{ month_name }} {{ active_year }}</span>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <a href="{{ url_for('meses_proveedor') }}" class="btn btn-outline-light">Cambiar mes</a>
+      <a href="{{ url_for('logout') }}" class="btn logout-btn">Cerrar sesión</a>
+    </div>
+  </div>
 
   {% with messages = get_flashed_messages() %}
     {% if messages %}
@@ -39,107 +88,104 @@
     {% endif %}
   {% endwith %}
 
-  <div class="card mb-3">
-    <h5 class="mb-2">Define tus pedidos del mes</h5>
-    <p class="mb-1">Selecciona mes/año. Si tienes pedidos, indica cuántos y captura sus números.</p>
-    <p class="mb-0 hint">Si este mes no registrarás pedidos, usa el botón “No se registrarán pedidos”.</p>
-  </div>
+  {% if projects %}
+    {% for p in projects %}
+      <div class="card">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <h5 class="mb-1">{{ p['name'] }}</h5>
+            <div class="text-muted">
+              Creado: {% if p['created_at'] %}{{ p['created_at'].strftime('%d/%m/%Y') }}{% else %}-{% endif %}
+            </div>
+          </div>
+        </div>
 
-  <div class="card mb-3">
-    <form method="POST" id="reqForm">
-      <div class="row g-2">
-        <div class="col-md-4">
-          <label class="form-label">Mes</label>
-          <select class="form-select" name="month" id="month" required>
-            {% for m in range(1,13) %}
-              <option value="{{ m }}" {% if m == default_month %}selected{% endif %}>{{ m }}</option>
+        <hr>
+
+        <table class="table table-bordered bg-white">
+          <thead>
+            <tr>
+              <th style="width: 30%;">Documento</th>
+              <th style="width: 45%;">Subir / Reemplazar</th>
+              <th style="width: 25%;">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+
+            {% for doc in DOCUMENTOS_OBLIGATORIOS %}
+              {% set current = documentos_subidos[p['id']].get(doc) %}
+              <tr>
+                <td><b>{{ doc }}</b></td>
+
+                <td>
+                  <form method="POST" enctype="multipart/form-data" class="d-flex flex-column gap-2">
+
+                    {% if current %}
+                      <input type="hidden" name="action" value="update_doc">
+                    {% else %}
+                      <input type="hidden" name="action" value="upload_doc">
+                    {% endif %}
+
+                    <input type="hidden" name="project_id" value="{{ p['id'] }}">
+                    <input type="hidden" name="tipo_documento" value="{{ doc }}">
+
+                    <div class="d-flex gap-2 align-items-start flex-wrap">
+                      <input type="file"
+                             name="documento"
+                             required
+                             class="form-control file-input">
+
+                      {% if current %}
+                        <button type="submit" class="btn btn-warning btn-sm">Reemplazar</button>
+                      {% else %}
+                        <button type="submit" class="btn btn-success btn-sm">Subir</button>
+                      {% endif %}
+                    </div>
+
+                    <div class="file-label">
+                      Archivo seleccionado: <span class="file-name text-muted">Ninguno</span>
+                    </div>
+                  </form>
+                </td>
+
+                <td>
+                  {% if current %}
+                    <div class="text-success fw-bold">🟢 Subido</div>
+                    <div class="text-muted" style="font-size:.9rem;">
+                      {{ current['nombre_archivo'] }}
+                    </div>
+                  {% else %}
+                    <div class="text-danger fw-bold">❌ Pendiente</div>
+                  {% endif %}
+                </td>
+              </tr>
             {% endfor %}
-          </select>
-        </div>
 
-        <div class="col-md-4">
-          <label class="form-label">Año</label>
-          <input type="number" class="form-control" name="year" id="year" value="{{ default_year }}" required>
-        </div>
-
-        <div class="col-md-4">
-          <label class="form-label">¿Cuántos pedidos?</label>
-          <input type="number" class="form-control" name="total" id="total" min="1" max="200" placeholder="Ej. 8">
-        </div>
+          </tbody>
+        </table>
       </div>
-
-      <hr>
-
-      <div id="pedidosContainer"></div>
-
-      <div class="d-flex flex-wrap gap-2 mt-3">
-        <button type="button" class="btn btn-outline-dark" id="btnGenerar">Generar campos</button>
-
-        <!-- ✅ Registrar pedidos -->
-        <button type="submit" class="btn btn-primary" onclick="document.getElementById('action').value='save_pedidos';">
-          Siguiente
-        </button>
-
-        <!-- ✅ Saltar pedidos -->
-        <button type="submit" class="btn btn-outline-secondary"
-                onclick="document.getElementById('action').value='skip_pedidos';">
-          No se registrarán pedidos
-        </button>
+    {% endfor %}
+  {% else %}
+    <div class="card">
+      <h5 class="mb-1">No hay pedidos/proyectos para este mes</h5>
+      <p class="mb-2 text-muted">Puedes cambiar de mes o registrar pedidos en Requerimientos.</p>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('meses_proveedor') }}" class="btn btn-primary">Ver meses</a>
+        <a href="{{ url_for('requerimientos_proveedor') }}" class="btn btn-outline-dark">Ir a requerimientos</a>
       </div>
-
-      <input type="hidden" name="action" id="action" value="save_pedidos">
-    </form>
-  </div>
-
-  <div class="card">
-    <h6 class="mb-2">Últimos registros (si ya existen)</h6>
-    {% if resumen %}
-      <ul class="mb-0">
-        {% for r in resumen %}
-          <li><b>{{ r['month'] }}/{{ r['year'] }}</b> — {{ r['total'] }} pedidos registrados</li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p class="mb-0">Aún no tienes pedidos registrados.</p>
-    {% endif %}
-  </div>
+    </div>
+  {% endif %}
 
 </div>
 
 <script>
-  function buildInputs(n){
-    const cont = document.getElementById('pedidosContainer');
-    cont.innerHTML = '';
-
-    if(!n || n < 1) return;
-
-    const wrap = document.createElement('div');
-    wrap.className = 'row g-2';
-
-    for(let i=1;i<=n;i++){
-      const col = document.createElement('div');
-      col.className = 'col-md-6';
-      col.innerHTML = `
-        <label class="form-label">Pedido #${i}</label>
-        <input class="form-control" name="pedido_${i}" required placeholder="Ej. 123456">
-      `;
-      wrap.appendChild(col);
-    }
-    cont.appendChild(wrap);
-  }
-
-  document.getElementById('btnGenerar').addEventListener('click', function(){
-    const n = parseInt(document.getElementById('total').value || '0', 10);
-    if(!n || n < 1){
-      alert('Escribe cuántos pedidos tienes o presiona "No se registrarán pedidos".');
-      return;
-    }
-    buildInputs(n);
-  });
-
-  document.getElementById('total').addEventListener('change', function(){
-    const n = parseInt(this.value || '0', 10);
-    buildInputs(n);
+  // Mostrar el nombre del archivo seleccionado junto al input
+  document.querySelectorAll('.file-input').forEach(inp => {
+    inp.addEventListener('change', function(){
+      const fileName = this.files && this.files.length ? this.files[0].name : 'Ninguno';
+      const label = this.closest('form').querySelector('.file-name');
+      if(label) label.textContent = fileName;
+    });
   });
 </script>
 

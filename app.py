@@ -1,7 +1,12 @@
 # app.py
 import os
+import re
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+
+from flask import (
+    Flask, render_template, request, redirect, url_for,
+    session, flash, jsonify
+)
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import psycopg
@@ -10,23 +15,28 @@ import psycopg.errors
 
 import boto3
 
-MONTHS = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
-}
-
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# -------------------- DB --------------------
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+def _normalize_db_url(url: str) -> str:
+    """
+    Render Postgres normalmente requiere SSL. Si tu URL no trae sslmode, lo agregamos.
+    """
+    if not url:
+        return url
+    if "sslmode=" in url:
+        return url
+    joiner = "&" if "?" in url else "?"
+    return url + f"{joiner}sslmode=require"
 
 def get_conn():
-    # psycopg3
-    return psycopg.connect(DATABASE_URL)
+    return psycopg.connect(_normalize_db_url(DATABASE_URL))
 
-# ---------- AWS CONFIG ----------
+# -------------------- AWS S3 --------------------
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 BUCKET_NAME = os.environ.get("AWS_BUCKET_NAME", "repse-documento")
 
@@ -37,6 +47,7 @@ s3 = boto3.client(
     region_name=AWS_REGION
 )
 
+# -------------------- CONSTANTS --------------------
 DOCUMENTOS_OBLIGATORIOS = [
     "Cédula fiscal",
     "Identificación oficial",
@@ -47,25 +58,48 @@ DOCUMENTOS_OBLIGATORIOS = [
     "Documentación de capacitación"
 ]
 
-# ========== HELPERS ==========
-def get_presigned_url(key):
+MONTHS = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+}
+
+ALLOWED_EXT = {"pdf", "jpg", "jpeg", "png"}
+
+def _safe_int(x):
     try:
-        return s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": BUCKET_NAME, "Key": key},
-            ExpiresIn=300
-        )
+        return int(x)
+    except:
+        return None
+
+def _clean_filename(name: str) -> str:
+    name = name or "archivo"
+    name = re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("_")
+    return name[:180] if len(name) > 180 else name
+
+# -------------------- S3 HELPERS --------------------
+def get_presigned_url(s3_key: str, download_name: str | None = None) -> str | None:
+    if not s3_key:
+        return None
+    try:
+        params = {"Bucket": BUCKET_NAME, "Key": s3_key}
+        # fuerza descarga con nombre bonito
+        if download_name:
+            params["ResponseContentDisposition"] = f'attachment; filename="{_clean_filename(download_name)}"'
+        return s3.generate_presigned_url("get_object", Params=params, ExpiresIn=300)
     except Exception as e:
         print("Presign error:", e)
         return None
 
-def require_admin():
-    return ("usuario" in session and session.get("rol") == 1)
+def s3_delete_key(key: str):
+    if not key:
+        return
+    try:
+        s3.delete_object(Bucket=BUCKET_NAME, Key=key)
+    except Exception as e:
+        print("S3 delete error:", e)
 
-def require_provider():
-    return ("usuario" in session and session.get("rol") == 2)
-
-# ========== LOGIN ==========
+# -------------------- AUTH --------------------
 @app.route("/", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -91,15 +125,13 @@ def login():
             if user["rol"] == 1:
                 return redirect(url_for("dashboard_admin"))
             else:
-                # si tienes requerimientos antes del dashboard, manda ahí
-                # return redirect(url_for("requerimientos"))
-                return redirect(url_for("dashboard_proveedor"))
+                # proveedor primero pasa por requerimientos
+                return redirect(url_for("requerimientos"))
         else:
             flash("Credenciales incorrectas")
 
     return render_template("login.html")
 
-# ========== REGISTRO ==========
 @app.route("/registro", methods=["GET", "POST"])
 def registro():
     if request.method == "POST":
@@ -111,43 +143,50 @@ def registro():
 
         password_hash = generate_password_hash(contrasena)
 
-        # Campos extra proveedor (si no vienen, quedan None)
-        repse_numero = request.form.get("repse_numero")
-        registro_folio = request.form.get("registro_folio")
-        aviso_registro = request.form.get("aviso_registro")
-        vigencia = request.form.get("vigencia")
-        rfc = request.form.get("rfc")
-        regimen_patronal = request.form.get("regimen_patronal")
-        objeto_servicio = request.form.get("objeto_servicio")
-
-        contacto_nombre = request.form.get("contacto_nombre")
-        contacto_telefono = request.form.get("contacto_telefono")
-        contacto_correo = request.form.get("contacto_correo")
+        # Si tu tabla usuarios tiene campos extra del proveedor, aquí los capturas
+        # (si no existen, no pasa nada: no los insertamos).
+        # Puedes ajustar nombres según tu DB real.
+        proveedor_extra = {
+            "repse_numero": request.form.get("repse_numero"),
+            "registro_folio": request.form.get("registro_folio"),
+            "aviso_registro": request.form.get("aviso_registro"),
+            "vigencia": request.form.get("vigencia"),
+            "rfc": request.form.get("rfc"),
+            "regimen_patronal": request.form.get("regimen_patronal"),
+            "objeto_servicio": request.form.get("objeto_servicio"),
+            "contacto_nombre": request.form.get("contacto_nombre"),
+            "contacto_telefono": request.form.get("contacto_telefono"),
+            "contacto_correo": request.form.get("contacto_correo"),
+        }
 
         conn = get_conn()
         cur = conn.cursor()
         try:
-            # OJO: Esto asume que existen estas columnas en usuarios.
-            # Si tu tabla no tiene columnas extra, dime y lo adapto.
-            cur.execute("""
-                INSERT INTO usuarios(
-                    nombre, usuario, correo, password, rol, estado,
-                    repse_numero, registro_folio, aviso_registro, vigencia,
-                    rfc, regimen_patronal, objeto_servicio,
-                    contacto_nombre, contacto_telefono, contacto_correo
+            # Intentamos insertar con extras solo si existen columnas
+            # (si no existen, fallaría). Entonces hacemos fallback a la versión básica.
+            try:
+                cur.execute("""
+                    INSERT INTO usuarios(
+                        nombre, usuario, correo, password, rol, estado,
+                        repse_numero, registro_folio, aviso_registro, vigencia,
+                        rfc, regimen_patronal, objeto_servicio,
+                        contacto_nombre, contacto_telefono, contacto_correo
+                    ) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    nombre, usuario, correo, password_hash, rol, "pendiente",
+                    proveedor_extra["repse_numero"], proveedor_extra["registro_folio"],
+                    proveedor_extra["aviso_registro"], proveedor_extra["vigencia"],
+                    proveedor_extra["rfc"], proveedor_extra["regimen_patronal"],
+                    proveedor_extra["objeto_servicio"], proveedor_extra["contacto_nombre"],
+                    proveedor_extra["contacto_telefono"], proveedor_extra["contacto_correo"],
+                ))
+            except Exception:
+                conn.rollback()
+                cur.execute(
+                    "INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(%s,%s,%s,%s,%s,%s)",
+                    (nombre, usuario, correo, password_hash, rol, "pendiente")
                 )
-                VALUES(
-                    %s,%s,%s,%s,%s,%s,
-                    %s,%s,%s,%s,
-                    %s,%s,%s,
-                    %s,%s,%s
-                )
-            """, (
-                nombre, usuario, correo, password_hash, rol, "pendiente",
-                repse_numero, registro_folio, aviso_registro, vigencia,
-                rfc, regimen_patronal, objeto_servicio,
-                contacto_nombre, contacto_telefono, contacto_correo
-            ))
+
             conn.commit()
             flash("Registro exitoso. Espera aprobación del administrador.")
             return redirect(url_for("login"))
@@ -156,8 +195,7 @@ def registro():
             flash("El usuario ya existe.")
         except Exception as e:
             conn.rollback()
-            print("Registro error:", e)
-            flash("Error registrando. Revisa logs.")
+            flash("Error en el registro: " + str(e))
         finally:
             cur.close()
             conn.close()
@@ -169,25 +207,24 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# ========== ADMIN DASHBOARD (CON FILTROS REALES) ==========
+# -------------------- ADMIN --------------------
 @app.route("/admin/dashboard")
 def dashboard_admin():
-    if not require_admin():
+    if "usuario" not in session or session.get("rol") != 1:
         flash("Acceso denegado")
         return redirect(url_for("login"))
 
-    # ---- leer filtros (GET)
-    provider_ids = request.args.getlist("providers")  # multi-select
+    # filtros GET
+    provider_ids = request.args.getlist("providers")
     provider_ids_int = []
     for x in provider_ids:
-        try:
-            provider_ids_int.append(int(x))
-        except:
-            pass
+        xi = _safe_int(x)
+        if xi is not None:
+            provider_ids_int.append(xi)
 
-    year = (request.args.get("year") or "").strip()
-    month = (request.args.get("month") or "").strip()
-    q = (request.args.get("q") or "").strip()
+    year = request.args.get("year", "").strip()
+    month = request.args.get("month", "").strip()
+    q = (request.args.get("q", "") or "").strip()
 
     selected_year = int(year) if year.isdigit() else None
     selected_month = int(month) if month.isdigit() else None
@@ -199,16 +236,16 @@ def dashboard_admin():
     cur.execute("SELECT * FROM usuarios WHERE estado='pendiente' ORDER BY id DESC")
     pendientes = cur.fetchall()
 
-    # proveedores ALL (para: gestión, datos proveedor, recordatorios, select)
+    # proveedores ALL (para selects/gestion/datos/recordatorios)
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2 ORDER BY nombre ASC")
     proveedores_all = cur.fetchall()
 
-    # proveedores filtrados SOLO para pestaña proveedores
-    proveedores_filtrados = proveedores_all
+    # proveedores filtrados (solo para pestaña proveedores)
+    proveedores = proveedores_all
     if provider_ids_int:
-        proveedores_filtrados = [p for p in proveedores_all if p["id"] in provider_ids_int]
+        proveedores = [p for p in proveedores_all if p["id"] in provider_ids_int]
 
-    # -------- query dinámica de projects con filtros reales
+    # proyectos filtrados
     where = []
     params = []
 
@@ -224,18 +261,10 @@ def dashboard_admin():
         where.append("periodo_month = %s")
         params.append(selected_month)
 
-    # búsqueda
     if q:
-        where.append("""
-            (
-              name ILIKE %s OR
-              COALESCE(pedido_no,'') ILIKE %s OR
-              CAST(provider_id AS TEXT) ILIKE %s OR
-              CAST(id AS TEXT) ILIKE %s
-            )
-        """)
+        where.append("(name ILIKE %s OR COALESCE(pedido_no,'') ILIKE %s)")
         like = f"%{q}%"
-        params.extend([like, like, like, like])
+        params.extend([like, like])
 
     sql_projects = "SELECT * FROM projects"
     if where:
@@ -243,233 +272,277 @@ def dashboard_admin():
     sql_projects += " ORDER BY created_at DESC"
 
     cur.execute(sql_projects, params)
-    proyectos = cur.fetchall()
+    projects = cur.fetchall()
 
-    # Si hay búsqueda, filtra también proveedores_filtrados por nombre/usuario/correo
-    if q:
-        ql = q.lower()
-        proveedores_filtrados = [
-            p for p in proveedores_filtrados
-            if ql in (p.get("nombre", "") or "").lower()
-            or ql in (p.get("usuario", "") or "").lower()
-            or ql in (p.get("correo", "") or "").lower()
-        ]
-
-    # documentos SOLO de proyectos visibles (para que el filtro afecte docs)
-    project_ids = [pr["id"] for pr in proyectos]
-    documentos = []
+    # docs solo de esos proyectos (para que el filtro impacte documentos)
+    docs = []
+    project_ids = [p["id"] for p in projects]
     if project_ids:
         cur.execute(
             "SELECT * FROM documentos WHERE project_id = ANY(%s) ORDER BY fecha_subida DESC",
             (project_ids,)
         )
-        documentos = cur.fetchall()
+        docs = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    documentos_por_usuario = {}
-    for d in documentos:
-        documentos_por_usuario.setdefault(d["usuario_id"], {}).setdefault(d["project_id"], []).append(d)
+    # agrupar docs por usuario->project
+    docs_by_user = {}
+    for d in docs:
+        docs_by_user.setdefault(d["usuario_id"], {}).setdefault(d["project_id"], []).append(d)
 
     return render_template(
         "dashboard_admin.html",
         pendientes=pendientes,
-
-        proveedores_all=proveedores_all,           # NO filtrado (para gestión, datos, recordatorios)
-        proveedores=proveedores_filtrados,         # filtrado (para pestaña proveedores)
-
-        proyectos=proyectos,
-        documentos_por_usuario=documentos_por_usuario,
-
+        proveedores_all=proveedores_all,
+        proveedores=proveedores,
+        proyectos=projects,
+        documentos_por_usuario=docs_by_user,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
-        get_presigned_url=get_presigned_url,
-
+        get_presigned_url=lambda key: get_presigned_url(key),  # para template actual
         selected_provider_ids=provider_ids_int,
         selected_year=selected_year,
         selected_month=selected_month,
         q=q
     )
 
-# APROBAR / RECHAZAR
 @app.route("/admin/accion/<int:id>/<accion>")
 def accion(id, accion):
-    if not require_admin():
+    if "usuario" not in session or session.get("rol") != 1:
         flash("Acceso denegado")
         return redirect(url_for("login"))
 
     conn = get_conn()
     cur = conn.cursor()
+    if accion == "aprobar":
+        cur.execute("UPDATE usuarios SET estado='aprobado' WHERE id=%s", (id,))
+    else:
+        cur.execute("DELETE FROM usuarios WHERE id=%s", (id,))
+    conn.commit()
+    cur.close()
+    conn.close()
 
-    try:
-        if accion == "aprobar":
-            cur.execute("UPDATE usuarios SET estado='aprobado' WHERE id=%s", (id,))
-        else:
-            cur.execute("DELETE FROM usuarios WHERE id=%s", (id,))
-        conn.commit()
-        flash("Operación realizada.")
-    except Exception as e:
-        conn.rollback()
-        print("Accion error:", e)
-        flash("Error en operación.")
-    finally:
-        cur.close()
-        conn.close()
-
+    flash("Operación realizada.")
     return redirect(url_for("dashboard_admin"))
 
-# DELETE USER (con limpieza S3)
 @app.route("/admin/delete_user", methods=["POST"])
 def delete_user():
-    if not require_admin():
+    if "usuario" not in session or session.get("rol") != 1:
         return jsonify({"success": False, "msg": "Acceso denegado"}), 403
 
     data = request.get_json() or {}
-    user_id = data.get("id")
+    user_id = _safe_int(data.get("id"))
+    if user_id is None:
+        return jsonify({"success": False, "msg": "ID inválido"}), 400
 
-    if not user_id:
-        return jsonify({"success": False, "msg": "Falta id"}), 400
-
-    if int(user_id) == int(session["user_id"]):
+    if user_id == session.get("user_id"):
         return jsonify({"success": False, "msg": "No puedes borrar tu propia cuenta"}), 400
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    try:
-        # obtener docs para borrar S3
-        cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
-        docs = cur.fetchall()
+    # borrar S3 docs
+    cur.execute("SELECT ruta FROM documentos WHERE usuario_id=%s", (user_id,))
+    docs = cur.fetchall()
+    for d in docs:
+        s3_delete_key(d["ruta"])
 
-        for d in docs:
-            try:
-                s3.delete_object(Bucket=BUCKET_NAME, Key=d["ruta"])
-            except Exception as e:
-                print("S3 delete doc error:", e)
+    # borrar BD
+    cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
+    cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
+    cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
 
-        # borrar db
-        cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
-        cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
-        cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        conn.commit()
-        return jsonify({"success": True, "msg": "Usuario eliminado correctamente"})
-    except Exception as e:
-        conn.rollback()
-        print("Delete user error:", e)
-        return jsonify({"success": False, "msg": "Error al eliminar usuario"}), 500
-    finally:
-        cur.close()
-        conn.close()
+    return jsonify({"success": True, "msg": "Usuario eliminado correctamente"})
 
-# DELETE PROJECT (admin)
 @app.route("/admin/delete_project", methods=["POST"])
 def delete_project():
-    if not require_admin():
+    if "usuario" not in session or session.get("rol") != 1:
         return jsonify({"success": False, "msg": "Acceso denegado"}), 403
 
     data = request.get_json() or {}
-    project_id = data.get("project_id")
-
-    if not project_id:
-        return jsonify({"success": False, "msg": "Falta project_id"}), 400
+    project_id = _safe_int(data.get("project_id"))
+    if project_id is None:
+        return jsonify({"success": False, "msg": "project_id inválido"}), 400
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    try:
-        # docs del proyecto
-        cur.execute("SELECT ruta FROM documentos WHERE project_id=%s", (project_id,))
-        docs = cur.fetchall()
+    # docs del proyecto (S3)
+    cur.execute("SELECT ruta FROM documentos WHERE project_id=%s", (project_id,))
+    docs = cur.fetchall()
+    for d in docs:
+        s3_delete_key(d["ruta"])
 
-        for d in docs:
-            try:
-                s3.delete_object(Bucket=BUCKET_NAME, Key=d["ruta"])
-            except Exception as e:
-                print("S3 delete project doc error:", e)
+    # borrar BD
+    cur.execute("DELETE FROM documentos WHERE project_id=%s", (project_id,))
+    cur.execute("DELETE FROM projects WHERE id=%s", (project_id,))
 
-        # borrar docs y proyecto
-        cur.execute("DELETE FROM documentos WHERE project_id=%s", (project_id,))
-        cur.execute("DELETE FROM projects WHERE id=%s", (project_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
 
-        conn.commit()
-        return jsonify({"success": True, "msg": "Proyecto eliminado correctamente"})
-    except Exception as e:
-        conn.rollback()
-        print("Delete project error:", e)
-        return jsonify({"success": False, "msg": "Error al eliminar proyecto."}), 500
-    finally:
-        cur.close()
-        conn.close()
+    return jsonify({"success": True, "msg": "Proyecto eliminado correctamente"})
 
-# Reminder (stub)
 @app.route("/admin/send_reminder", methods=["POST"], endpoint="send_reminder")
 def send_reminder():
-    if not require_admin():
+    """
+    De momento deja esto como simulación (no rompe nada).
+    Si quieres SMTP Outlook real, lo activamos después.
+    """
+    if "usuario" not in session or session.get("rol") != 1:
         return jsonify({"success": False, "message": "Acceso denegado"}), 403
 
     data = request.get_json() or {}
     provider_ids = data.get("provider_ids", [])
-    subject = data.get("subject", "Recordatorio REPSE")
-    message = data.get("message", "")
+    sent = len(provider_ids) if provider_ids else 0
+    return jsonify({"success": True, "sent": sent})
 
-    if not provider_ids:
-        return jsonify({"success": False, "message": "No providers selected"}), 400
-
-    # Aquí iría tu envío real (Outlook/SMTP)
-    return jsonify({"success": True, "sent": len(provider_ids), "subject": subject})
-
-# ========== PROVEEDOR DASHBOARD ==========
-@app.route("/proveedor/dashboard", methods=["GET", "POST"])
-def dashboard_proveedor():
-    if not require_provider():
+# -------------------- PROVEEDOR: REQUERIMIENTOS (PREVIO) --------------------
+@app.route("/proveedor/requerimientos", methods=["GET", "POST"])
+def requerimientos():
+    if "usuario" not in session or session.get("rol") != 2:
         flash("Acceso denegado")
         return redirect(url_for("login"))
 
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
-    cur.execute("SELECT * FROM usuarios WHERE usuario=%s", (session["usuario"],))
+    cur.execute("SELECT * FROM usuarios WHERE id=%s", (session["user_id"],))
     user = cur.fetchone()
 
     if request.method == "POST":
-        # subir doc
+        year = _safe_int(request.form.get("year"))
+        month = _safe_int(request.form.get("month"))
+        count = _safe_int(request.form.get("count"))
+
+        if not year or not month or month not in MONTHS or not count or count < 1:
+            flash("Completa año, mes y cantidad de pedidos.")
+            cur.close()
+            conn.close()
+            return render_template("requerimientos.html", months=MONTHS)
+
+        # crear proyectos según count
+        created = 0
+        for i in range(1, count + 1):
+            pedido = (request.form.get(f"pedido_no_{i}") or "").strip()
+            if not pedido:
+                continue
+
+            # name visible
+            name = f"Pedido {pedido}"
+            try:
+                cur.execute("""
+                    INSERT INTO projects(provider_id, name, created_at, pedido_no, periodo_year, periodo_month)
+                    VALUES(%s,%s,NOW(),%s,%s,%s)
+                """, (user["id"], name, pedido, year, month))
+                created += 1
+            except Exception as e:
+                print("Create project error:", e)
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if created == 0:
+            flash("No se creó ningún pedido. Revisa los números de pedido.")
+            return redirect(url_for("requerimientos"))
+
+        flash(f"Se registraron {created} pedido(s) del periodo {MONTHS[month]} {year}.")
+        return redirect(url_for("dashboard_proveedor", year=year, month=month))
+
+    cur.close()
+    conn.close()
+    return render_template("requerimientos.html", months=MONTHS)
+
+# -------------------- PROVEEDOR DASHBOARD --------------------
+@app.route("/proveedor/dashboard", methods=["GET", "POST"])
+def dashboard_proveedor():
+    if "usuario" not in session or session.get("rol") != 2:
+        flash("Acceso denegado")
+        return redirect(url_for("login"))
+
+    conn = get_conn()
+    cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+
+    cur.execute("SELECT * FROM usuarios WHERE id=%s", (session["user_id"],))
+    user = cur.fetchone()
+
+    # POST: subir doc
+    if request.method == "POST":
         if request.form.get("action") == "upload_doc":
-            project_id = int(request.form.get("project_id"))
+            project_id = _safe_int(request.form.get("project_id"))
             tipo = request.form.get("tipo_documento")
             archivo = request.files.get("documento")
 
-            if archivo and archivo.filename:
+            if not project_id or not tipo or not archivo or not archivo.filename:
+                flash("Faltan datos para subir.")
+            else:
                 ext = archivo.filename.rsplit(".", 1)[-1].lower()
-                if ext not in ["pdf", "jpg", "jpeg", "png"]:
+                if ext not in ALLOWED_EXT:
                     flash("Tipo de archivo no permitido.")
                 else:
-                    filename = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{archivo.filename}"
+                    safe_original = _clean_filename(archivo.filename)
+                    key = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{user['id']}_p{project_id}_{safe_original}"
 
-                    s3.upload_fileobj(
-                        archivo,
-                        BUCKET_NAME,
-                        filename,
-                        ExtraArgs={"ACL": "private"}
-                    )
+                    try:
+                        s3.upload_fileobj(
+                            archivo,
+                            BUCKET_NAME,
+                            key,
+                            ExtraArgs={"ACL": "private"}
+                        )
 
-                    cur.execute("""
-                        INSERT INTO documentos(usuario_id,nombre_archivo,ruta,tipo_documento,fecha_subida,project_id)
-                        VALUES(%s,%s,%s,%s,NOW(),%s)
-                    """, (user["id"], archivo.filename, filename, tipo, project_id))
-                    conn.commit()
-                    flash("Documento subido correctamente.")
+                        cur.execute("""
+                            INSERT INTO documentos(usuario_id, nombre_archivo, ruta, tipo_documento, fecha_subida, project_id)
+                            VALUES(%s,%s,%s,%s,NOW(),%s)
+                        """, (user["id"], safe_original, key, tipo, project_id))
+                        conn.commit()
+                        flash("Documento subido correctamente.")
+                    except Exception as e:
+                        conn.rollback()
+                        flash("Error subiendo a S3: " + str(e))
 
-    # Aquí no filtras por mes/año porque el requerimiento de esa parte depende de tu requerimientos.html.
-    # Solo listamos proyectos del proveedor:
-    cur.execute("SELECT * FROM projects WHERE provider_id=%s ORDER BY created_at DESC", (user["id"],))
+    # GET filtros
+    year = _safe_int(request.args.get("year"))
+    month = _safe_int(request.args.get("month"))
+    q = (request.args.get("q", "") or "").strip()
+
+    where = ["provider_id=%s"]
+    params = [user["id"]]
+
+    if year:
+        where.append("periodo_year=%s")
+        params.append(year)
+    if month:
+        where.append("periodo_month=%s")
+        params.append(month)
+    if q:
+        where.append("(name ILIKE %s OR COALESCE(pedido_no,'') ILIKE %s)")
+        like = f"%{q}%"
+        params.extend([like, like])
+
+    sql_projects = "SELECT * FROM projects WHERE " + " AND ".join(where) + " ORDER BY created_at DESC"
+    cur.execute(sql_projects, params)
     projects = cur.fetchall()
 
-    cur.execute("SELECT * FROM documentos WHERE usuario_id=%s ORDER BY fecha_subida DESC", (user["id"],))
-    docs = cur.fetchall()
+    # docs del usuario (solo proyectos visibles)
+    docs = []
+    project_ids = [p["id"] for p in projects]
+    if project_ids:
+        cur.execute(
+            "SELECT * FROM documentos WHERE usuario_id=%s AND project_id = ANY(%s) ORDER BY fecha_subida DESC",
+            (user["id"], project_ids)
+        )
+        docs = cur.fetchall()
 
     cur.close()
     conn.close()
 
+    # map docs por project->tipo (último)
     docs_by_project = {}
     for d in docs:
         docs_by_project.setdefault(d["project_id"], []).append(d)
@@ -478,16 +551,28 @@ def dashboard_proveedor():
     for p in projects:
         documentos_subidos[p["id"]] = {}
         for doc in DOCUMENTOS_OBLIGATORIOS:
+            # tomar el primero (ya viene desc)
+            found = None
             for d in docs_by_project.get(p["id"], []):
-                if d["tipo_documento"] == doc:
-                    documentos_subidos[p["id"]][doc] = d
+                if d.get("tipo_documento") == doc:
+                    found = d
+                    break
+            if found:
+                documentos_subidos[p["id"]][doc] = found
 
     return render_template(
         "dashboard_proveedor.html",
         projects=projects,
         documentos_subidos=documentos_subidos,
-        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS
+        DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
+        months=MONTHS,
+        selected_year=year,
+        selected_month=month,
+        q=q
     )
 
+# -------------------- RUN --------------------
 if __name__ == "__main__":
-    app.run()
+    port = int(os.environ.get("PORT", 5000))
+    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() in ("1", "true")
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)

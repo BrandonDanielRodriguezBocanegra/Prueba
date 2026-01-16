@@ -3,23 +3,17 @@ import os
 import psycopg
 from werkzeug.security import generate_password_hash
 
-# ============================================================
-# CONFIG
-# ============================================================
 DB_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://repse_db_user:YOURPASS@YOURHOST/repse_db"
 )
 
-# ============================================================
-# CONNECT
-# ============================================================
 conn = psycopg.connect(DB_URL)
 c = conn.cursor()
 
-# ============================================================
-# TABLE: usuarios
-# ============================================================
+# ----------------------------
+# TABLA usuarios (con campos REPSE + contacto)
+# ----------------------------
 c.execute("""
 CREATE TABLE IF NOT EXISTS usuarios(
     id SERIAL PRIMARY KEY,
@@ -29,7 +23,6 @@ CREATE TABLE IF NOT EXISTS usuarios(
     password TEXT NOT NULL,
     rol INTEGER NOT NULL,
     estado TEXT NOT NULL,
-
     mail_password TEXT,
 
     -- REPSE
@@ -49,25 +42,29 @@ CREATE TABLE IF NOT EXISTS usuarios(
 )
 """)
 
-# ============================================================
-# TABLE: projects
-# ============================================================
+# ----------------------------
+# TABLA projects (base)
+# ----------------------------
 c.execute("""
 CREATE TABLE IF NOT EXISTS projects(
     id SERIAL PRIMARY KEY,
     provider_id INTEGER NOT NULL REFERENCES usuarios(id),
     name TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    completed INTEGER DEFAULT 0,
-
-    -- NUEVO: agrupación por mes/año y pedido
-    month INTEGER,
-    year INTEGER,
-    pedido_num TEXT
+    completed INTEGER DEFAULT 0
 )
 """)
 
-# Unique para evitar duplicados del mismo pedido en el mismo mes/año por proveedor
+# ----------------------------
+# AGREGAR COLUMNAS NUEVAS A projects si no existen
+# ----------------------------
+c.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS month INTEGER;")
+c.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS year INTEGER;")
+c.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS pedido_num TEXT;")
+
+# ----------------------------
+# UNIQUE para evitar duplicados de pedido por proveedor/mes/año
+# ----------------------------
 c.execute("""
 DO $$
 BEGIN
@@ -81,9 +78,9 @@ BEGIN
 END$$;
 """)
 
-# ============================================================
-# TABLE: documentos
-# ============================================================
+# ----------------------------
+# TABLA documentos
+# ----------------------------
 c.execute("""
 CREATE TABLE IF NOT EXISTS documentos(
     id SERIAL PRIMARY KEY,
@@ -96,17 +93,15 @@ CREATE TABLE IF NOT EXISTS documentos(
 )
 """)
 
-# ============================================================
-# CREATE ADMIN IF NOT EXISTS
-# ============================================================
+# ----------------------------
+# CREAR ADMIN SI NO EXISTE
+# ----------------------------
 print("Verificando existencia del usuario administrador...")
-
 c.execute("SELECT 1 FROM usuarios WHERE usuario = %s", ('admin',))
 admin = c.fetchone()
 
 if not admin:
     password_hash = generate_password_hash("admin123")
-
     c.execute("""
         INSERT INTO usuarios (nombre, usuario, correo, password, rol, estado)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -115,19 +110,15 @@ if not admin:
         "admin",
         "admin@empresa.com",
         password_hash,
-        1,                # Administrador
+        1,
         "aprobado"
     ))
-
     print(">>> Usuario admin creado correctamente")
     print(">>> Usuario: admin")
     print(">>> Password: admin123")
 else:
     print(">>> El usuario admin ya existe")
 
-# ============================================================
-# COMMIT & CLOSE
-# ============================================================
 conn.commit()
 c.close()
 conn.close()

@@ -8,84 +8,128 @@
 
   <style>
     body{
-      background: linear-gradient(135deg,#ff6a00,#ff007b,#6600ff);
+      background: linear-gradient(135deg, #ff6a00, #ff007b, #6600ff);
       background-size:300% 300%;
-      animation:gradientShift 10s ease infinite;
+      animation: gradientShift 10s ease infinite;
       color:#fff;
       min-height:100vh;
     }
     @keyframes gradientShift{
-      0%{background-position:0% 50%}
-      50%{background-position:100% 50%}
-      100%{background-position:0% 50%}
+      0%{background-position:0% 50%;}
+      50%{background-position:100% 50%;}
+      100%{background-position:0% 50%;}
     }
 
     .card{
       background: rgba(255,255,255,0.95);
       color:#333;
-      border-radius:12px;
-      padding:20px;
-      margin-bottom:18px;
+      border-radius:14px;
+      padding:18px;
+      margin-bottom:22px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.12);
     }
 
-    .table th{ background-color:#ff6a00; color:#fff; }
+    .table th{
+      background-color:#ff6a00;
+      color:#fff;
+    }
 
     .nav-tabs{
-      background: rgba(255,255,255,0.18);
-      border-radius:14px;
-      padding:10px;
-      border-bottom:none;
-      margin-bottom:18px;
+      border-bottom: 0;
+      background: rgba(255,255,255,.18);
+      padding: 10px;
+      border-radius: 14px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(6px);
     }
     .nav-tabs .nav-link{
-      color: rgba(255,255,255,0.92);
-      font-weight:600;
-      border:none;
-      border-radius:12px;
-      padding:10px 14px;
-      margin-right:6px;
-      transition: all .2s ease;
+      border:0;
+      color: rgba(255,255,255,.95);
+      font-weight:700;
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin-right: 6px;
+      transition: .2s;
+      text-shadow: 0 1px 2px rgba(0,0,0,.15);
     }
-    .nav-tabs .nav-link:hover{ background: rgba(255,255,255,0.18); color:#fff; }
+    .nav-tabs .nav-link:hover{
+      background: rgba(255,255,255,.18);
+    }
     .nav-tabs .nav-link.active{
-      background: rgba(255,255,255,0.28) !important;
-      color:#fff !important;
+      background: rgba(255,255,255,.22);
+      color:#fff;
+      outline: 1px solid rgba(255,255,255,.35);
     }
-
-    .filter-card{ margin-bottom:22px; }
-    .hint{ font-size: 0.9rem; color: rgba(0,0,0,0.55); margin-top:6px; }
 
     .logout-btn{
       background-color: rgba(255,255,255,0.2);
       color:#fff;
       border:1px solid #fff;
-      transition: all .2s ease;
-      border-radius:10px;
+      transition:.2s;
+      border-radius: 12px;
+      padding: 10px 16px;
+      text-decoration:none;
+      display:inline-block;
     }
-    .logout-btn:hover{ background:#fff; color:#6600ff; }
+    .logout-btn:hover{
+      background:#fff;
+      color:#6600ff;
+    }
 
-    .btn-soft{ border-radius:10px; }
+    .badge-soft{
+      background: rgba(0,0,0,.08);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight:700;
+      color:#333;
+    }
 
     .provider-card{
-      border: 1px solid rgba(0,0,0,0.08);
-      border-radius: 12px;
-      padding: 16px;
+      background: rgba(255,255,255,.97);
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 14px;
+      padding: 14px;
       margin-bottom: 12px;
-      background: rgba(255,255,255,0.96);
     }
+
     .provider-meta{
-      font-size: .92rem;
-      color: rgba(0,0,0,0.65);
-      margin-top: 4px;
+      font-size: 0.95rem;
+      color:#444;
     }
-    .badge-soft{
-      background: rgba(102,0,255,0.12);
-      color: #4b00c7;
-      border: 1px solid rgba(102,0,255,0.18);
-      border-radius: 999px;
+
+    .hint{
+      font-size:.85rem;
+      color:#555;
+      margin-top: 6px;
+    }
+
+    .filter-grid{
+      display:grid;
+      grid-template-columns: 1.2fr .7fr .7fr 1fr;
+      gap:10px;
+    }
+
+    @media (max-width: 992px){
+      .filter-grid{ grid-template-columns: 1fr; }
+    }
+
+    .btn-danger-soft{
+      background: #dc3545;
+      border:0;
+      color:#fff;
+      border-radius: 10px;
       padding: 6px 10px;
-      font-weight: 600;
-      font-size: .82rem;
+      font-weight:700;
+    }
+    .btn-danger-soft:hover{ filter: brightness(.92); }
+
+    .btn-outline-dark-soft{
+      border: 1px solid rgba(0,0,0,.25);
+      background: rgba(255,255,255,.75);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-weight:700;
+      color:#333;
     }
   </style>
 </head>
@@ -94,99 +138,75 @@
 <div class="container mt-4">
   <h3 class="text-white mb-4">Dashboard Administrador</h3>
 
-  <!-- PESTAÑAS -->
   <ul class="nav nav-tabs" id="adminTabs" role="tablist">
     <li class="nav-item">
-      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#proveedores" type="button">
-        Proveedores
-      </button>
+      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#proveedores" type="button">Proveedores</button>
     </li>
-
     <li class="nav-item">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#datosProveedor" type="button">
-        Datos de Proveedor
-      </button>
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pendientes" type="button">Usuarios Pendientes</button>
     </li>
-
     <li class="nav-item">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pendientes" type="button">
-        Usuarios Pendientes
-      </button>
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#gestion" type="button">Gestión de Usuarios</button>
     </li>
-
     <li class="nav-item">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#gestion" type="button">
-        Gestión de Usuarios
-      </button>
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#datosProveedor" type="button">Datos de Proveedor</button>
     </li>
-
     <li class="nav-item">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#recordatorios" type="button">
-        Recordatorios
-      </button>
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#recordatorios" type="button">Recordatorios</button>
     </li>
   </ul>
 
   <div class="tab-content">
 
-    <!-- =========================
-         TAB: PROVEEDORES
-    ========================== -->
+    <!-- ===================== PESTAÑA PROVEEDORES ===================== -->
     <div class="tab-pane fade show active" id="proveedores">
+      <div class="card">
+        <h5 class="mb-2">Filtros</h5>
 
-      <!-- FILTROS -->
-      <div class="card filter-card">
-        <h5 class="mb-3">Filtrar proveedores</h5>
+        <form method="GET" action="{{ url_for('dashboard_admin') }}">
+          <div class="filter-grid">
+            <div>
+              <label class="form-label fw-bold">Proveedor(es)</label>
+              <select class="form-select" name="providers" multiple size="3">
+                {% for p in proveedores_all %}
+                  <option value="{{ p['id'] }}"
+                    {% if p['id'] in selected_provider_ids %}selected{% endif %}>
+                    {{ p['nombre'] }} ({{ p['usuario'] }})
+                  </option>
+                {% endfor %}
+              </select>
+              <div class="hint">* Mantén CTRL para seleccionar varios</div>
+            </div>
 
-        <form method="GET" action="{{ url_for('dashboard_admin') }}" class="row g-3">
-          <div class="col-12">
-            <label class="form-label mb-1">Proveedor(es)</label>
-            <select name="providers" class="form-select" multiple size="5">
-              {% for p in proveedores_all %}
-                {% set selected = (p['id'] in selected_provider_ids) %}
-                <option value="{{ p['id'] }}" {% if selected %}selected{% endif %}>
-                  {{ p['nombre'] }} ({{ p['usuario'] }})
-                </option>
-              {% endfor %}
-            </select>
-            <div class="hint">* Mantén CTRL para seleccionar varios</div>
+            <div>
+              <label class="form-label fw-bold">Año</label>
+              <input class="form-control" name="year" placeholder="2026" value="{{ selected_year or '' }}">
+            </div>
+
+            <div>
+              <label class="form-label fw-bold">Mes</label>
+              <input class="form-control" name="month" placeholder="1-12" value="{{ selected_month or '' }}">
+            </div>
+
+            <div>
+              <label class="form-label fw-bold">Buscar</label>
+              <input class="form-control" name="q" placeholder="Proyecto / pedido / proveedor..." value="{{ q or '' }}">
+            </div>
           </div>
 
-          <div class="col-md-3">
-            <label class="form-label">Año</label>
-            <input type="number" class="form-control" name="year" value="{{ selected_year or '' }}" placeholder="2026">
-          </div>
-
-          <div class="col-md-3">
-            <label class="form-label">Mes</label>
-            <select class="form-select" name="month">
-              <option value="">Todos</option>
-              {% for m in range(1,13) %}
-                <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="col-md-6">
-            <label class="form-label">Buscar (proveedor / correo / proyecto / pedido)</label>
-            <input type="text" class="form-control" name="q" value="{{ q or '' }}"
-                   placeholder="Ej: Brandon / gmail / Ventanas / 11111">
-          </div>
-
-          <div class="col-12 d-flex gap-2">
-            <button class="btn btn-primary btn-soft" type="submit">Aplicar filtros</button>
-            <a class="btn btn-outline-secondary btn-soft" href="{{ url_for('dashboard_admin') }}">Limpiar</a>
+          <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-primary fw-bold" type="submit">Aplicar filtros</button>
+            <a class="btn btn-outline-dark-soft" href="{{ url_for('dashboard_admin') }}">Limpiar</a>
           </div>
         </form>
       </div>
 
-      <!-- RESULTADOS -->
       {% for p in proveedores %}
         <div class="card mb-3">
-          <div class="d-flex justify-content-between align-items-start">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
             <div>
-              <h5 class="mb-0">{{ p['nombre'] }} ({{ p['usuario'] }})</h5>
-              <small class="text-muted">{{ p['correo'] }}</small>
+              <h5 class="mb-1">{{ p['nombre'] }} <span class="text-muted">({{ p['usuario'] }})</span></h5>
+              <div class="provider-meta">📧 {{ p['correo'] }}</div>
             </div>
           </div>
 
@@ -195,17 +215,17 @@
           {% for project in proyectos %}
             {% if project['provider_id'] == p['id'] %}
 
-              <div class="d-flex justify-content-between align-items-center mt-3">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
                 <h6 class="mb-0">
-                  Proyecto: {{ project['name'] }}
-                  {% if project.get('pedido_no') %} - Pedido: {{ project['pedido_no'] }}{% endif %}
+                  Proyecto: <b>{{ project['name'] }}</b>
+                  {% if project.get('pedido_no') %} | Pedido: <b>{{ project['pedido_no'] }}</b>{% endif %}
                   {% if project.get('periodo_year') and project.get('periodo_month') %}
-                    - Periodo: {{ project['periodo_month'] }}/{{ project['periodo_year'] }}
+                    | Periodo: <b>{{ project['periodo_month'] }}/{{ project['periodo_year'] }}</b>
                   {% endif %}
-                  <span class="text-muted"> - {{ project['created_at'] }}</span>
+                  - <span class="text-muted">{{ project['created_at'] }}</span>
                 </h6>
 
-                <button class="btn btn-sm btn-danger btn-soft delete-project-btn"
+                <button class="btn-danger-soft delete-project-btn"
                         data-project="{{ project['id'] }}">
                   Eliminar proyecto
                 </button>
@@ -213,11 +233,7 @@
 
               <table class="table table-bordered mt-2">
                 <thead>
-                  <tr>
-                    <th>Documento</th>
-                    <th>Archivo</th>
-                    <th>Estado</th>
-                  </tr>
+                  <tr><th>Documento</th><th>Archivo</th><th>Estado</th></tr>
                 </thead>
                 <tbody>
                   {% for doc in DOCUMENTOS_OBLIGATORIOS %}
@@ -239,19 +255,73 @@
                   {% endfor %}
                 </tbody>
               </table>
-
             {% endif %}
           {% endfor %}
-
         </div>
       {% else %}
-        <p>No hay proveedores aprobados para los filtros seleccionados.</p>
+        <p>No hay proveedores aprobados.</p>
       {% endfor %}
     </div>
 
-    <!-- =========================
-         TAB: DATOS DE PROVEEDOR
-    ========================== -->
+    <!-- ===================== PESTAÑA PENDIENTES ===================== -->
+    <div class="tab-pane fade" id="pendientes">
+      <div class="card">
+        <h5>Usuarios pendientes</h5>
+        {% if pendientes %}
+          <table class="table table-bordered mt-3">
+            <thead>
+              <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+              {% for u in pendientes %}
+                <tr>
+                  <td>{{ u['nombre'] }}</td>
+                  <td>{{ u['usuario'] }}</td>
+                  <td>{{ u['correo'] }}</td>
+                  <td>{% if u['rol']==1 %}Admin{% else %}Proveedor{% endif %}</td>
+                  <td>
+                    <a href="{{ url_for('accion', id=u['id'], accion='aprobar') }}" class="btn btn-success btn-sm">Aprobar</a>
+                    <a href="{{ url_for('accion', id=u['id'], accion='rechazar') }}" class="btn btn-danger btn-sm">Rechazar</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p>No hay usuarios pendientes.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ===================== PESTAÑA GESTIÓN (SIN FILTRO) ===================== -->
+    <div class="tab-pane fade" id="gestion">
+      <div class="card">
+        <h5>Gestión de usuarios (proveedores aprobados)</h5>
+        {% if proveedores_all %}
+          <table class="table table-bordered table-striped mt-3">
+            <thead>
+              <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+              {% for p in proveedores_all %}
+                <tr id="user-row-{{ p['id'] }}">
+                  <td>{{ p['nombre'] }}</td>
+                  <td>{{ p['usuario'] }}</td>
+                  <td>{{ p['correo'] }}</td>
+                  <td>
+                    <button class="btn btn-danger btn-sm delete-user-btn" data-id="{{ p['id'] }}">Eliminar</button>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p>No hay proveedores aprobados.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ===================== PESTAÑA DATOS PROVEEDOR (TARJETAS + BÚSQUEDA) ===================== -->
     <div class="tab-pane fade" id="datosProveedor">
       <div class="card">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -268,44 +338,28 @@
         <div class="mt-3" id="providerInfoList">
           {% for p in proveedores_all %}
             <div class="provider-card provider-item"
-                 data-search="{{ (p['nombre'] ~ ' ' ~ p['usuario'] ~ ' ' ~ p['correo'] ~ ' ' ~ (p.get('rfc','') or '') ~ ' ' ~ (p.get('repse_numero','') or '')) | lower }}">
-              <div class="d-flex justify-content-between align-items-start">
-                <div>
-                  <h6 class="mb-1">{{ p['nombre'] }} <span class="text-muted">({{ p['usuario'] }})</span></h6>
-                  <div class="provider-meta">📧 {{ p['correo'] }}</div>
+              data-search="{{ (p['nombre'] ~ ' ' ~ p['usuario'] ~ ' ' ~ p['correo'] ~ ' ' ~ (p.get('rfc','') or '') ~ ' ' ~ (p.get('repse_numero','') or '')) | lower }}">
 
-                  {# CAMPOS EXTRA (solo se muestran si existen en la tabla usuarios) #}
-                  {% if p.get('repse_numero') %}
-                    <div class="provider-meta">REPSE: <b>{{ p['repse_numero'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('rfc') %}
-                    <div class="provider-meta">RFC: <b>{{ p['rfc'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('registro_folio') %}
-                    <div class="provider-meta">Folio: <b>{{ p['registro_folio'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('aviso_registro') %}
-                    <div class="provider-meta">Aviso/Fecha: <b>{{ p['aviso_registro'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('vigencia') %}
-                    <div class="provider-meta">Vigencia: <b>{{ p['vigencia'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('regimen_patronal') %}
-                    <div class="provider-meta">Régimen Patronal: <b>{{ p['regimen_patronal'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('objeto_servicio') %}
-                    <div class="provider-meta">Objeto del Servicio: <b>{{ p['objeto_servicio'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('contacto_nombre') %}
-                    <div class="provider-meta">Contacto: <b>{{ p['contacto_nombre'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('contacto_telefono') %}
-                    <div class="provider-meta">Teléfono: <b>{{ p['contacto_telefono'] }}</b></div>
-                  {% endif %}
-                  {% if p.get('contacto_correo') %}
-                    <div class="provider-meta">Correo contacto: <b>{{ p['contacto_correo'] }}</b></div>
-                  {% endif %}
-                </div>
+              <h6 class="mb-1">{{ p['nombre'] }} <span class="text-muted">({{ p['usuario'] }})</span></h6>
+              <div class="provider-meta">📧 <b>{{ p['correo'] }}</b></div>
+
+              <hr>
+
+              <div class="row g-2">
+                <div class="col-md-6"><div class="provider-meta">Número REPSE: <b>{{ p.get('repse_numero') or '-' }}</b></div></div>
+                <div class="col-md-6"><div class="provider-meta">Folio: <b>{{ p.get('registro_folio') or '-' }}</b></div></div>
+
+                <div class="col-md-6"><div class="provider-meta">Aviso / Fecha aviso: <b>{{ p.get('aviso_registro') or '-' }}</b></div></div>
+                <div class="col-md-6"><div class="provider-meta">Vigencia: <b>{{ p.get('vigencia') or '-' }}</b></div></div>
+
+                <div class="col-md-6"><div class="provider-meta">RFC: <b>{{ p.get('rfc') or '-' }}</b></div></div>
+                <div class="col-md-6"><div class="provider-meta">Régimen Patronal: <b>{{ p.get('regimen_patronal') or '-' }}</b></div></div>
+
+                <div class="col-12"><div class="provider-meta">Objeto del Servicio: <b>{{ p.get('objeto_servicio') or '-' }}</b></div></div>
+
+                <div class="col-md-4"><div class="provider-meta">Contacto: <b>{{ p.get('contacto_nombre') or '-' }}</b></div></div>
+                <div class="col-md-4"><div class="provider-meta">Teléfono: <b>{{ p.get('contacto_telefono') or '-' }}</b></div></div>
+                <div class="col-md-4"><div class="provider-meta">Correo contacto: <b>{{ p.get('contacto_correo') or '-' }}</b></div></div>
               </div>
             </div>
           {% else %}
@@ -315,73 +369,7 @@
       </div>
     </div>
 
-    <!-- =========================
-         TAB: PENDIENTES
-    ========================== -->
-    <div class="tab-pane fade" id="pendientes">
-      {% if pendientes %}
-        <div class="card">
-          <table class="table table-bordered mt-1">
-            <thead>
-              <tr>
-                <th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for p in pendientes %}
-                <tr>
-                  <td>{{ p['nombre'] }}</td>
-                  <td>{{ p['usuario'] }}</td>
-                  <td>{{ p['correo'] }}</td>
-                  <td>{% if p['rol']==1 %}Admin{% else %}Proveedor{% endif %}</td>
-                  <td>
-                    <a href="{{ url_for('accion', id=p['id'], accion='aprobar') }}" class="btn btn-success btn-sm btn-soft">Aprobar</a>
-                    <a href="{{ url_for('accion', id=p['id'], accion='rechazar') }}" class="btn btn-danger btn-sm btn-soft">Rechazar</a>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p>No hay usuarios pendientes.</p>
-      {% endif %}
-    </div>
-
-    <!-- =========================
-         TAB: GESTION
-    ========================== -->
-    <div class="tab-pane fade" id="gestion">
-      {% if proveedores_all %}
-        <div class="card">
-          <table class="table table-bordered table-striped">
-            <thead>
-              <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Acciones</th></tr>
-            </thead>
-            <tbody>
-              {% for p in proveedores_all %}
-                <tr id="user-row-{{ p['id'] }}">
-                  <td>{{ p['nombre'] }}</td>
-                  <td>{{ p['usuario'] }}</td>
-                  <td>{{ p['correo'] }}</td>
-                  <td>
-                    <button class="btn btn-danger btn-sm btn-soft delete-user-btn" data-id="{{ p['id'] }}">
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p>No hay proveedores aprobados.</p>
-      {% endif %}
-    </div>
-
-    <!-- =========================
-         TAB: RECORDATORIOS
-    ========================== -->
+    <!-- ===================== PESTAÑA RECORDATORIOS ===================== -->
     <div class="tab-pane fade" id="recordatorios">
       <div class="card">
         <h5>Enviar recordatorio</h5>
@@ -399,7 +387,7 @@
           <input type="text" class="form-control my-2" placeholder="Asunto" id="reminder_subject">
           <textarea class="form-control my-2" rows="3" placeholder="Mensaje..." id="reminder_message"></textarea>
 
-          <button type="submit" class="btn btn-primary btn-soft">Enviar</button>
+          <button type="submit" class="btn btn-primary fw-bold">Enviar</button>
         </form>
 
         <div id="reminder_status" class="mt-2"></div>
@@ -408,17 +396,25 @@
 
   </div>
 
-  <a href="{{ url_for('logout') }}" class="btn logout-btn mt-3">Cerrar sesión</a>
+  <a href="{{ url_for('logout') }}" class="logout-btn mt-3">Cerrar sesión</a>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-  // Recordatorios
+  // --- Filtro en vivo (Datos de proveedor)
+  $('#providerInfoSearch').on('input', function(){
+    const q = ($(this).val() || '').toLowerCase().trim();
+    $('.provider-item').each(function(){
+      const hay = ($(this).data('search') || '');
+      $(this).toggle(hay.includes(q));
+    });
+  });
+
+  // --- Recordatorios (stub)
   $('#form-reminder').on('submit', function(e){
     e.preventDefault();
     let provider_ids = [];
-
     $('#form-reminder input[type=checkbox]:checked').each(function(){
       provider_ids.push($(this).val());
     });
@@ -433,7 +429,7 @@
         message: $('#reminder_message').val()
       }),
       success: function(res){
-        $('#reminder_status').text('Recordatorio enviado a ' + (res.sent || 0) + ' proveedores.');
+        $('#reminder_status').text('Recordatorio enviado a ' + res.sent + ' proveedores.');
       },
       error: function(){
         $('#reminder_status').text('Error al enviar recordatorio.');
@@ -441,9 +437,9 @@
     });
   });
 
-  // Eliminar usuario
+  // --- Eliminar usuario
   $('.delete-user-btn').click(function(){
-    if(!confirm('¿Eliminar usuario?')) return;
+    if(!confirm('¿Eliminar usuario? Se borrarán sus proyectos y documentos.')) return;
     let id = $(this).data('id');
 
     $.ajax({
@@ -463,39 +459,25 @@
     });
   });
 
-  // Eliminar proyecto (admin)
+  // --- Eliminar proyecto
   $('.delete-project-btn').click(function(){
-    if(!confirm('¿Eliminar este proyecto y sus documentos?')) return;
+    if(!confirm('¿Eliminar este proyecto? Se borrarán documentos del proyecto.')) return;
     let project_id = $(this).data('project');
 
     $.ajax({
       url: "{{ url_for('delete_project') }}",
       type: 'POST',
       contentType: 'application/json',
-      data: JSON.stringify({ project_id }),
+      data: JSON.stringify({project_id}),
       success: function(res){
         alert(res.msg);
         if(res.success){
           location.reload();
         }
       },
-      error: function(xhr){
-        try{
-          const r = JSON.parse(xhr.responseText);
-          alert(r.msg || 'Error al eliminar proyecto.');
-        }catch(e){
-          alert('Error al eliminar proyecto.');
-        }
+      error: function(){
+        alert('Error al eliminar proyecto.');
       }
-    });
-  });
-
-  // BUSCADOR en vivo: Datos de Proveedor
-  $('#providerInfoSearch').on('input', function(){
-    const q = ($(this).val() || '').toLowerCase().trim();
-    $('.provider-item').each(function(){
-      const hay = ($(this).data('search') || '');
-      $(this).toggle(hay.includes(q));
     });
   });
 </script>

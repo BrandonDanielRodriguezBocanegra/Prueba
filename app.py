@@ -19,7 +19,7 @@ import boto3
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
-# -------------------- DB --------------------
+# ===================== DB =====================
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 def _normalize_db_url(url: str) -> str:
@@ -35,13 +35,12 @@ def get_conn():
 
 def ensure_tables():
     """
-    Crea tablas nuevas si no existen (no rompe tu DB existente).
-    - enabled_periods: meses habilitados por proveedor
-    - project_docs: relación pedido/proyecto con docs que aplican + completado
+    Crea tablas NUEVAS si no existen (no rompe la DB).
     """
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # meses habilitados para cada proveedor
         cur.execute("""
         CREATE TABLE IF NOT EXISTS enabled_periods(
             id SERIAL PRIMARY KEY,
@@ -53,6 +52,7 @@ def ensure_tables():
         )
         """)
 
+        # docs que aplican / completado por pedido (project)
         cur.execute("""
         CREATE TABLE IF NOT EXISTS project_docs(
             id SERIAL PRIMARY KEY,
@@ -63,13 +63,12 @@ def ensure_tables():
             UNIQUE(project_id, tipo_documento)
         )
         """)
-
         conn.commit()
     finally:
         cur.close()
         conn.close()
 
-# -------------------- AWS S3 --------------------
+# ===================== AWS S3 =====================
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-2")
 BUCKET_NAME = os.environ.get("AWS_BUCKET_NAME", "repse-documento")
 
@@ -80,7 +79,6 @@ s3 = boto3.client(
     region_name=AWS_REGION
 )
 
-# -------------------- CONSTANTS --------------------
 DOCUMENTOS_OBLIGATORIOS = [
     "Cédula fiscal",
     "Identificación oficial",
@@ -110,7 +108,6 @@ def _clean_filename(name: str) -> str:
     name = re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("_")
     return name[:180] if len(name) > 180 else name
 
-# -------------------- S3 HELPERS --------------------
 def get_presigned_url(s3_key: str, download_name: str | None = None) -> str | None:
     if not s3_key:
         return None
@@ -131,7 +128,7 @@ def s3_delete_key(key: str):
     except Exception as e:
         print("S3 delete error:", e)
 
-# -------------------- AUTH --------------------
+# ===================== AUTH =====================
 @app.route("/", methods=["GET", "POST"])
 def login():
     ensure_tables()
@@ -159,7 +156,6 @@ def login():
             if user["rol"] == 1:
                 return redirect(url_for("dashboard_admin"))
             else:
-                # NUEVO FLUJO: proveedor -> meses habilitados
                 return redirect(url_for("meses_habilitados"))
         else:
             flash("Credenciales incorrectas")
@@ -183,7 +179,8 @@ def registro():
         cur = conn.cursor()
         try:
             cur.execute(
-                "INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) VALUES(%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) "
+                "VALUES(%s,%s,%s,%s,%s,%s)",
                 (nombre, usuario, correo, password_hash, rol, "pendiente")
             )
             conn.commit()
@@ -206,7 +203,7 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# -------------------- ADMIN DASHBOARD --------------------
+# ===================== ADMIN =====================
 @app.route("/admin/dashboard")
 def dashboard_admin():
     ensure_tables()
@@ -215,7 +212,7 @@ def dashboard_admin():
         flash("Acceso denegado")
         return redirect(url_for("login"))
 
-    # filtros GET existentes (si ya los usas)
+    # -------- filtros (proveedor / año / mes / búsqueda)
     provider_ids = request.args.getlist("providers")
     provider_ids_int = []
     for x in provider_ids:
@@ -237,11 +234,11 @@ def dashboard_admin():
     cur.execute("SELECT * FROM usuarios WHERE estado='pendiente' ORDER BY id DESC")
     pendientes = cur.fetchall()
 
-    # proveedores ALL
+    # proveedores (para select y para pestañas)
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2 ORDER BY nombre ASC")
     proveedores_all = cur.fetchall()
 
-    # proveedores filtrados (solo para pestaña proveedores)
+    # proveedores filtrados para pestaña proveedores
     proveedores = proveedores_all
     if provider_ids_int:
         proveedores = [p for p in proveedores_all if p["id"] in provider_ids_int]
@@ -275,20 +272,25 @@ def dashboard_admin():
     cur.execute(sql_projects, params)
     projects = cur.fetchall()
 
-    # docs de esos proyectos (para admin ver qué subieron)
+    # -------- documentos: traer los del project_id visible + globales (project_id NULL)
     docs = []
     project_ids = [p["id"] for p in projects]
     if project_ids:
-        cur.execute(
-            "SELECT * FROM documentos WHERE project_id = ANY(%s) OR project_id IS NULL ORDER BY fecha_subida DESC",
-            (project_ids,)
-        )
+        cur.execute("""
+            SELECT * FROM documentos
+            WHERE project_id IS NULL OR project_id = ANY(%s)
+            ORDER BY fecha_subida DESC
+        """, (project_ids,))
         docs = cur.fetchall()
     else:
-        cur.execute("SELECT * FROM documentos ORDER BY fecha_subida DESC")
+        # si no hay proyectos visibles, al menos mostrar globales (y no romper)
+        cur.execute("""
+            SELECT * FROM documentos
+            ORDER BY fecha_subida DESC
+        """)
         docs = cur.fetchall()
 
-    # meses habilitados (para pestaña nueva)
+    # -------- meses habilitados (pestaña)
     cur.execute("""
         SELECT ep.*, u.nombre, u.usuario, u.correo
         FROM enabled_periods ep
@@ -300,7 +302,7 @@ def dashboard_admin():
     cur.close()
     conn.close()
 
-    # agrupar docs por usuario->project (incluye project_id NULL como 0)
+    # agrupar docs por usuario->project (NULL = 0)
     docs_by_user = {}
     for d in docs:
         pid = d["project_id"] if d["project_id"] is not None else 0
@@ -314,7 +316,7 @@ def dashboard_admin():
         proyectos=projects,
         documentos_por_usuario=docs_by_user,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
-        get_presigned_url=lambda key: get_presigned_url(key),
+        get_presigned_url=lambda key, name=None: get_presigned_url(key, name),
         selected_provider_ids=provider_ids_int,
         selected_year=selected_year,
         selected_month=selected_month,
@@ -323,7 +325,6 @@ def dashboard_admin():
         enabled_periods=enabled_periods
     )
 
-# ADMIN: aprobar / rechazar
 @app.route("/admin/accion/<int:id>/<accion>")
 def accion(id, accion):
     if "usuario" not in session or session.get("rol") != 1:
@@ -343,7 +344,6 @@ def accion(id, accion):
     flash("Operación realizada.")
     return redirect(url_for("dashboard_admin"))
 
-# ADMIN: delete user (incluye borrar S3)
 @app.route("/admin/delete_user", methods=["POST"])
 def delete_user():
     if "usuario" not in session or session.get("rol") != 1:
@@ -368,6 +368,7 @@ def delete_user():
 
     # borrar BD
     cur.execute("DELETE FROM documentos WHERE usuario_id=%s", (user_id,))
+    cur.execute("DELETE FROM project_docs WHERE project_id IN (SELECT id FROM projects WHERE provider_id=%s)", (user_id,))
     cur.execute("DELETE FROM projects WHERE provider_id=%s", (user_id,))
     cur.execute("DELETE FROM enabled_periods WHERE provider_id=%s", (user_id,))
     cur.execute("DELETE FROM usuarios WHERE id=%s", (user_id,))
@@ -378,7 +379,6 @@ def delete_user():
 
     return jsonify({"success": True, "msg": "Usuario eliminado correctamente"})
 
-# ADMIN: habilitar mes
 @app.route("/admin/enable_month", methods=["POST"])
 def enable_month():
     if "usuario" not in session or session.get("rol") != 1:
@@ -410,7 +410,6 @@ def enable_month():
 
     return jsonify({"success": True, "msg": "Mes habilitado"})
 
-# ADMIN: deshabilitar mes
 @app.route("/admin/disable_month", methods=["POST"])
 def disable_month():
     if "usuario" not in session or session.get("rol") != 1:
@@ -430,7 +429,6 @@ def disable_month():
 
     return jsonify({"success": True, "msg": "Mes deshabilitado"})
 
-# ADMIN: delete project
 @app.route("/admin/delete_project", methods=["POST"])
 def delete_project():
     if "usuario" not in session or session.get("rol") != 1:
@@ -459,9 +457,9 @@ def delete_project():
 
     return jsonify({"success": True, "msg": "Proyecto eliminado correctamente"})
 
-# ADMIN: reminders (simulado)
 @app.route("/admin/send_reminder", methods=["POST"], endpoint="send_reminder")
 def send_reminder():
+    # (simulado como lo traías)
     if "usuario" not in session or session.get("rol") != 1:
         return jsonify({"success": False, "message": "Acceso denegado"}), 403
     data = request.get_json() or {}
@@ -469,7 +467,7 @@ def send_reminder():
     sent = len(provider_ids) if provider_ids else 0
     return jsonify({"success": True, "sent": sent})
 
-# -------------------- PROVEEDOR: MESES HABILITADOS --------------------
+# ===================== PROVEEDOR: MESES HABILITADOS =====================
 @app.route("/proveedor/meses")
 def meses_habilitados():
     ensure_tables()
@@ -491,7 +489,7 @@ def meses_habilitados():
 
     return render_template("meses_habilitados.html", periods=periods, months=MONTHS)
 
-# -------------------- PROVEEDOR: REQUERIMIENTOS --------------------
+# ===================== PROVEEDOR: REQUERIMIENTOS =====================
 @app.route("/proveedor/requerimientos", methods=["GET", "POST"])
 def requerimientos():
     ensure_tables()
@@ -500,7 +498,6 @@ def requerimientos():
         flash("Acceso denegado")
         return redirect(url_for("login"))
 
-    # Debe venir un periodo habilitado
     year = _safe_int(request.args.get("year"))
     month = _safe_int(request.args.get("month"))
 
@@ -508,16 +505,16 @@ def requerimientos():
         flash("Periodo inválido.")
         return redirect(url_for("meses_habilitados"))
 
-    # Verificar que esté habilitado
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+
+    # verificar habilitado
     cur.execute("""
         SELECT 1 FROM enabled_periods
         WHERE provider_id=%s AND periodo_year=%s AND periodo_month=%s
         LIMIT 1
     """, (session["user_id"], year, month))
     ok = cur.fetchone()
-
     if not ok:
         cur.close()
         conn.close()
@@ -525,6 +522,12 @@ def requerimientos():
         return redirect(url_for("meses_habilitados"))
 
     if request.method == "POST":
+        # botón "no se registraran nuevos pedidos"
+        if request.form.get("skip") == "1":
+            cur.close()
+            conn.close()
+            return redirect(url_for("dashboard_proveedor", year=year, month=month))
+
         count = _safe_int(request.form.get("count"))
         if not count or count < 1:
             flash("Indica cuántos pedidos registrarás.")
@@ -556,7 +559,7 @@ def requerimientos():
     conn.close()
     return render_template("requerimientos.html", months=MONTHS, year=year, month=month)
 
-# -------------------- PROVEEDOR DASHBOARD --------------------
+# ===================== PROVEEDOR DASHBOARD =====================
 @app.route("/proveedor/dashboard", methods=["GET", "POST"])
 def dashboard_proveedor():
     ensure_tables()
@@ -568,16 +571,14 @@ def dashboard_proveedor():
     conn = get_conn()
     cur = conn.cursor(row_factory=psycopg.rows.dict_row)
 
-    # filtros periodo
     selected_year = _safe_int(request.args.get("year"))
     selected_month = _safe_int(request.args.get("month"))
     q = (request.args.get("q", "") or "").strip()
 
-    # ----------- POST Acciones ----------
     if request.method == "POST":
         action = request.form.get("action")
 
-        # SUBIR DOCUMENTO GLOBAL (project_id NULL) - se carga una sola vez
+        # -------- subir doc GLOBAL (una vez, reemplazable)
         if action == "upload_global_doc":
             tipo = request.form.get("tipo_documento")
             archivo = request.files.get("documento")
@@ -595,7 +596,7 @@ def dashboard_proveedor():
                     key = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_u{session['user_id']}_GLOBAL_{safe_original}"
 
                     try:
-                        # Si ya existía un documento global del mismo tipo, lo reemplazamos (borrando el anterior en S3)
+                        # si ya existía ese tipo global, lo reemplazamos
                         cur.execute("""
                             SELECT id, ruta FROM documentos
                             WHERE usuario_id=%s AND project_id IS NULL AND tipo_documento=%s
@@ -615,12 +616,12 @@ def dashboard_proveedor():
                         """, (session["user_id"], safe_original, key, tipo))
 
                         conn.commit()
-                        flash("Documento subido correctamente (global).")
+                        flash("Documento subido correctamente.")
                     except Exception as e:
                         conn.rollback()
                         flash("Error subiendo a S3: " + str(e))
 
-        # MARCAR DOC APLICA A UN PEDIDO
+        # -------- toggle aplica doc en pedido
         elif action == "toggle_aplica":
             project_id = _safe_int(request.form.get("project_id"))
             tipo = request.form.get("tipo_documento")
@@ -635,19 +636,21 @@ def dashboard_proveedor():
                 """, (project_id, tipo, aplica))
                 conn.commit()
 
-        # MARCAR PEDIDO COMPLETADO (si el proveedor quiere)
+        # -------- toggle pedido completado
         elif action == "toggle_project_completed":
             project_id = _safe_int(request.form.get("project_id"))
             if project_id:
-                cur.execute("SELECT completed FROM projects WHERE id=%s AND provider_id=%s", (project_id, session["user_id"]))
+                cur.execute("""
+                    SELECT completed FROM projects
+                    WHERE id=%s AND provider_id=%s
+                """, (project_id, session["user_id"]))
                 row = cur.fetchone()
                 if row:
-                    new_val = 0 if (row["completed"] == 1) else 1
+                    new_val = 0 if row["completed"] == 1 else 1
                     cur.execute("UPDATE projects SET completed=%s WHERE id=%s", (new_val, project_id))
                     conn.commit()
 
-    # ----------- Consultas ----------
-    # proyectos del proveedor (filtrables por periodo)
+    # -------- proyectos filtrables
     where = ["provider_id=%s"]
     params = [session["user_id"]]
 
@@ -667,7 +670,7 @@ def dashboard_proveedor():
     projects = cur.fetchall()
     project_ids = [p["id"] for p in projects]
 
-    # documentos globales (project_id NULL)
+    # docs globales (project_id NULL)
     cur.execute("""
         SELECT * FROM documentos
         WHERE usuario_id=%s AND project_id IS NULL
@@ -675,20 +678,16 @@ def dashboard_proveedor():
     """, (session["user_id"],))
     global_docs = cur.fetchall()
 
-    # map global_docs por tipo (último)
     global_by_tipo = {}
     for d in global_docs:
         t = d.get("tipo_documento")
         if t and t not in global_by_tipo:
             global_by_tipo[t] = d
 
-    # project_docs para los proyectos visibles
-    project_docs_map = {}  # {project_id: {tipo: row}}
+    # project_docs map
+    project_docs_map = {}
     if project_ids:
-        cur.execute("""
-            SELECT * FROM project_docs
-            WHERE project_id = ANY(%s)
-        """, (project_ids,))
+        cur.execute("SELECT * FROM project_docs WHERE project_id = ANY(%s)", (project_ids,))
         rows = cur.fetchall()
         for r in rows:
             project_docs_map.setdefault(r["project_id"], {})[r["tipo_documento"]] = r
@@ -705,10 +704,10 @@ def dashboard_proveedor():
         selected_month=selected_month,
         q=q,
         global_by_tipo=global_by_tipo,
-        project_docs_map=project_docs_map,
+        project_docs_map=project_docs_map
     )
 
-# -------------------- RUN --------------------
+# ===================== RUN =====================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() in ("1", "true")

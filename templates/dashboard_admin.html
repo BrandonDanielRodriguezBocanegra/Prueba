@@ -80,6 +80,29 @@
       font-weight: 700;
       font-size: .85rem;
     }
+
+    .provider-info-grid{
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 14px;
+    }
+    .provider-info-card{
+      grid-column: span 6;
+      background: rgba(255,255,255,0.95);
+      border-radius: 12px;
+      padding: 16px;
+      color: #333;
+    }
+    @media (max-width: 992px){
+      .provider-info-card{ grid-column: span 12; }
+    }
+    .kv{
+      font-size: 0.9rem;
+      padding: 6px 0;
+      border-bottom: 1px dashed rgba(0,0,0,0.12);
+    }
+    .kv:last-child{ border-bottom: none; }
+    .kv b{ display:inline-block; min-width: 140px; }
   </style>
 </head>
 
@@ -194,6 +217,7 @@
               <div class="badge-soft">ID: {{ p['id'] }}</div>
             </div>
 
+            {# documentos globales del proveedor (project_id NULL) #}
             {% set docs_by_user = documentos_por_usuario.get(p['id'], {}) %}
             {% set global_docs = docs_by_user.get(0, []) %}
 
@@ -256,24 +280,22 @@
                           {% if pd.get(doc) and pd.get(doc)['aplica'] %}
                             {% set any_aplica = True %}
 
-                            {# buscar el archivo global del tipo doc #}
-                            {% set encontrado = False %}
-                            {% set fn = "" %}
-                            {% set key = "" %}
+                            {# ======= FIX JINJA SCOPE: namespace() ======= #}
+                            {% set ns = namespace(found=false, fn="", key="") %}
                             {% for d in global_docs %}
-                              {% if d['tipo_documento'] == doc and not encontrado %}
-                                {% set encontrado = True %}
-                                {% set fn = d['nombre_archivo'] %}
-                                {% set key = d['ruta'] %}
+                              {% if d['tipo_documento'] == doc and not ns.found %}
+                                {% set ns.found = true %}
+                                {% set ns.fn = d['nombre_archivo'] %}
+                                {% set ns.key = d['ruta'] %}
                               {% endif %}
                             {% endfor %}
 
                             <tr>
                               <td class="fw-bold">{{ doc }}</td>
                               <td>
-                                {% if encontrado %}
-                                  <a href="{{ get_presigned_url(key, fn) }}" target="_blank">
-                                    Descargar: {{ fn }}
+                                {% if ns.found %}
+                                  <a href="{{ get_presigned_url(ns.key, ns.fn) }}" target="_blank">
+                                    Descargar: {{ ns.fn }}
                                   </a>
                                 {% else %}
                                   <span class="text-muted">No subido por proveedor</span>
@@ -468,26 +490,39 @@
     <!-- ===================== INFO PROVEEDOR ===================== -->
     <div class="tab-pane fade" id="infoProveedor">
       <div class="card">
-        <h5>Información de proveedor</h5>
-        <input class="form-control mt-2" id="providerInfoSearch" placeholder="Buscar por nombre/usuario/correo...">
+        <h5>Información de proveedor (datos reales del registro)</h5>
 
-        <div id="providerInfoGrid" class="mt-3">
+        <input class="form-control mt-2" id="providerInfoSearch" placeholder="Buscar por nombre/usuario/correo/RFC/razón social...">
+
+        <div class="provider-info-grid mt-3" id="providerInfoGrid">
           {% for p in proveedores_all %}
-            <div class="card mb-3 provider-info-card"
-                 data-search="{{ (p['nombre'] ~ ' ' ~ p['usuario'] ~ ' ' ~ p['correo'])|lower }}">
-              <div class="fw-bold">{{ p['nombre'] }}</div>
+            {# searchable string con todos los campos #}
+            {% set ns = namespace(search="") %}
+            {% for k,v in p.items() %}
+              {% if v %}
+                {% set ns.search = ns.search ~ " " ~ v|string %}
+              {% endif %}
+            {% endfor %}
+
+            <div class="provider-info-card provider-info-card-item"
+                 data-search="{{ ns.search|lower }}">
+              <div class="fw-bold fs-5">{{ p['nombre'] }}</div>
               <div class="text-muted">{{ p['usuario'] }} · {{ p['correo'] }}</div>
 
-              <div class="mt-2">
+              <div class="mt-3">
+                {# muestra TODOS los campos guardados (excepto sensibles/sistema) #}
                 {% for key,val in p.items() %}
-                  {% if key not in ['password'] and val and key not in ['rol'] %}
-                    <div class="small"><b>{{ key }}:</b> {{ val }}</div>
+                  {% if key not in ['password','mail_password','rol','estado'] and val and key != 'id' %}
+                    <div class="kv">
+                      <b>{{ key }}:</b> {{ val }}
+                    </div>
                   {% endif %}
                 {% endfor %}
               </div>
             </div>
           {% endfor %}
         </div>
+
       </div>
     </div>
 
@@ -599,8 +634,8 @@
   // Buscador info proveedor
   $('#providerInfoSearch').on('input', function(){
     const q = ($(this).val() || '').toLowerCase().trim();
-    $('.provider-info-card').each(function(){
-      const hay = ($(this).data('search') || '').toString();
+    $('.provider-info-card-item').each(function(){
+      const hay = (($(this).data('search') || '') + '').toLowerCase();
       $(this).toggle(hay.includes(q));
     });
   });

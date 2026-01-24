@@ -9,231 +9,177 @@
   <style>
     body{
       background: linear-gradient(135deg, #ff6a00, #ff007b, #6600ff);
-      background-size:300% 300%;
+      background-size: 300% 300%;
       animation: gradientShift 10s ease infinite;
       color:#fff;
       min-height:100vh;
     }
     @keyframes gradientShift{
-      0%{background-position:0% 50%;}
-      50%{background-position:100% 50%;}
-      100%{background-position:0% 50%;}
+      0%{background-position:0% 50%}
+      50%{background-position:100% 50%}
+      100%{background-position:0% 50%}
     }
-
     .card{
       background: rgba(255,255,255,0.95);
       color:#333;
-      border-radius:14px;
-      padding:18px;
-      margin-bottom:22px;
-      box-shadow: 0 10px 25px rgba(0,0,0,.12);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
     }
-
     .table th{
       background-color:#ff6a00;
       color:#fff;
     }
-
     .nav-tabs{
-      border-bottom: 0;
-      background: rgba(255,255,255,.18);
-      padding: 10px;
+      border-bottom: 3px solid rgba(255,255,255,0.25);
+      margin-bottom: 14px;
+      background: rgba(255,255,255,0.12);
       border-radius: 14px;
-      margin-bottom: 16px;
-      backdrop-filter: blur(6px);
+      padding: 10px 10px 0 10px;
     }
     .nav-tabs .nav-link{
-      border:0;
-      color: rgba(255,255,255,.95);
-      font-weight:700;
-      border-radius: 12px;
-      padding: 10px 14px;
-      margin-right: 6px;
-      transition: .2s;
-      text-shadow: 0 1px 2px rgba(0,0,0,.15);
+      color: rgba(255,255,255,0.9);
+      font-weight: 600;
+      border: none;
+      border-bottom: 3px solid transparent;
     }
     .nav-tabs .nav-link:hover{
-      background: rgba(255,255,255,.18);
+      color:#fff;
+      border-bottom:3px solid rgba(255,255,255,0.55);
     }
     .nav-tabs .nav-link.active{
-      background: rgba(255,255,255,.22);
       color:#fff;
-      outline: 1px solid rgba(255,255,255,.35);
+      background: rgba(255,255,255,0.18) !important;
+      border-radius: 12px 12px 0 0;
+      border-bottom: 3px solid rgba(255,255,255,0.8);
     }
-
     .logout-btn{
-      background-color: rgba(255,255,255,0.2);
+      background-color: rgba(255,255,255,0.18);
       color:#fff;
-      border:1px solid #fff;
-      transition:.2s;
-      border-radius: 12px;
-      padding: 10px 16px;
-      text-decoration:none;
-      display:inline-block;
+      border: 1px solid rgba(255,255,255,0.75);
+      transition: all .2s ease;
     }
     .logout-btn:hover{
-      background:#fff;
-      color:#6600ff;
-    }
-
-    .badge-soft{
-      background: rgba(0,0,0,.08);
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-weight:700;
-      color:#333;
-    }
-
-    .provider-card{
-      background: rgba(255,255,255,.97);
-      border: 1px solid rgba(0,0,0,.08);
-      border-radius: 14px;
-      padding: 14px;
-      margin-bottom: 12px;
-    }
-
-    .provider-meta{
-      font-size: 0.95rem;
-      color:#444;
-    }
-
-    .hint{
-      font-size:.85rem;
-      color:#555;
-      margin-top: 6px;
-    }
-
-    .filter-grid{
-      display:grid;
-      grid-template-columns: 1.2fr .7fr .7fr 1fr;
-      gap:10px;
-    }
-
-    @media (max-width: 992px){
-      .filter-grid{ grid-template-columns: 1fr; }
-    }
-
-    .btn-danger-soft{
-      background: #dc3545;
-      border:0;
+      background-color: rgba(255,255,255,0.32);
       color:#fff;
-      border-radius: 10px;
-      padding: 6px 10px;
-      font-weight:700;
     }
-    .btn-danger-soft:hover{ filter: brightness(.92); }
-
-    .btn-outline-dark-soft{
-      border: 1px solid rgba(0,0,0,.25);
-      background: rgba(255,255,255,.75);
-      border-radius: 10px;
-      padding: 8px 12px;
-      font-weight:700;
-      color:#333;
-    }
+    .filter-card{ margin-bottom: 22px; }
+    .hint{ color: rgba(0,0,0,0.6); font-size: .92rem; }
+    a{ color:#0b5ed7; }
   </style>
 </head>
+
 <body>
-
 <div class="container mt-4">
-  <h3 class="text-white mb-4">Dashboard Administrador</h3>
+  <h3 class="text-white mb-3">Dashboard Administrador</h3>
 
+  <!-- Tabs -->
   <ul class="nav nav-tabs" id="adminTabs" role="tablist">
     <li class="nav-item">
-      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#proveedores" type="button">Proveedores</button>
+      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#proveedores" type="button">
+        Proveedores
+      </button>
     </li>
     <li class="nav-item">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pendientes" type="button">Usuarios Pendientes</button>
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pendientes" type="button">
+        Usuarios Pendientes
+      </button>
     </li>
     <li class="nav-item">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#gestion" type="button">Gestión de Usuarios</button>
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#gestion" type="button">
+        Gestión de Usuarios
+      </button>
     </li>
     <li class="nav-item">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#datosProveedor" type="button">Datos de Proveedor</button>
-    </li>
-    <li class="nav-item">
-      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#recordatorios" type="button">Recordatorios</button>
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#recordatorios" type="button">
+        Recordatorios
+      </button>
     </li>
   </ul>
 
   <div class="tab-content">
 
-    <!-- ===================== PESTAÑA PROVEEDORES ===================== -->
+    <!-- TAB Proveedores -->
     <div class="tab-pane fade show active" id="proveedores">
-      <div class="card">
-        <h5 class="mb-2">Filtros</h5>
+
+      <!-- Filtros -->
+      <div class="card filter-card">
+        <h5 class="mb-2">Filtrar proveedores</h5>
 
         <form method="GET" action="{{ url_for('dashboard_admin') }}">
-          <div class="filter-grid">
-            <div>
-              <label class="form-label fw-bold">Proveedor(es)</label>
-              <select class="form-select" name="providers" multiple size="3">
-                {% for p in proveedores_all %}
-                  <option value="{{ p['id'] }}"
-                    {% if p['id'] in selected_provider_ids %}selected{% endif %}>
+          <div class="row g-2">
+            <div class="col-md-5">
+              <label class="form-label">Proveedor(es)</label>
+              <select class="form-select" name="providers" multiple size="4">
+                {% for p in proveedores_todos %}
+                  <option value="{{ p['id'] }}" {% if p['id'] in selected_providers %}selected{% endif %}>
                     {{ p['nombre'] }} ({{ p['usuario'] }})
                   </option>
                 {% endfor %}
               </select>
-              <div class="hint">* Mantén CTRL para seleccionar varios</div>
+              <div class="hint mt-1">* Mantén CTRL para seleccionar varios</div>
             </div>
 
-            <div>
-              <label class="form-label fw-bold">Año</label>
-              <input class="form-control" name="year" placeholder="2026" value="{{ selected_year or '' }}">
+            <div class="col-md-2">
+              <label class="form-label">Año</label>
+              <input class="form-control" name="year" placeholder="2026" value="{{ selected_year }}">
             </div>
 
-            <div>
-              <label class="form-label fw-bold">Mes</label>
-              <input class="form-control" name="month" placeholder="1-12" value="{{ selected_month or '' }}">
+            <div class="col-md-2">
+              <label class="form-label">Mes</label>
+              <select class="form-select" name="month">
+                <option value="">--</option>
+                {% for k,v in months.items() %}
+                  <option value="{{ k }}" {% if selected_month == k %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+              </select>
             </div>
 
-            <div>
-              <label class="form-label fw-bold">Buscar</label>
-              <input class="form-control" name="q" placeholder="Proyecto / pedido / proveedor..." value="{{ q or '' }}">
+            <div class="col-md-3">
+              <label class="form-label">Buscar</label>
+              <input class="form-control" name="q" placeholder="nombre, usuario o correo" value="{{ q }}">
             </div>
           </div>
 
           <div class="mt-3 d-flex gap-2">
-            <button class="btn btn-primary fw-bold" type="submit">Aplicar filtros</button>
-            <a class="btn btn-outline-dark-soft" href="{{ url_for('dashboard_admin') }}">Limpiar</a>
+            <button type="submit" class="btn btn-primary">Aplicar filtros</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('dashboard_admin') }}">Limpiar</a>
           </div>
         </form>
       </div>
 
+      <!-- LISTADO -->
       {% for p in proveedores %}
         <div class="card mb-3">
-          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-            <div>
-              <h5 class="mb-1">{{ p['nombre'] }} <span class="text-muted">({{ p['usuario'] }})</span></h5>
-              <div class="provider-meta">📧 {{ p['correo'] }}</div>
-            </div>
-          </div>
+          <h5 class="mb-2">{{ p['nombre'] }} ({{ p['usuario'] }})</h5>
+          <div class="small text-muted mb-2">{{ p['correo'] }}</div>
 
           {% set docs_by_user = documentos_por_usuario.get(p['id'], {}) %}
 
           {% for project in proyectos %}
             {% if project['provider_id'] == p['id'] %}
-
-              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
-                <h6 class="mb-0">
-                  Proyecto: <b>{{ project['name'] }}</b>
-                  {% if project.get('pedido_no') %} | Pedido: <b>{{ project['pedido_no'] }}</b>{% endif %}
+              <div class="d-flex justify-content-between align-items-center mt-3">
+                <h6 class="mb-2">
+                  Proyecto: {{ project.get('pedido_no') or project['name'] }}
                   {% if project.get('periodo_year') and project.get('periodo_month') %}
-                    | Periodo: <b>{{ project['periodo_month'] }}/{{ project['periodo_year'] }}</b>
+                    - {{ months.get(project['periodo_month'], project['periodo_month']) }} {{ project['periodo_year'] }}
                   {% endif %}
-                  - <span class="text-muted">{{ project['created_at'] }}</span>
                 </h6>
 
-                <button class="btn-danger-soft delete-project-btn"
+                <button class="btn btn-danger btn-sm delete-project-btn"
                         data-project="{{ project['id'] }}">
                   Eliminar proyecto
                 </button>
               </div>
 
-              <table class="table table-bordered mt-2">
+              <table class="table table-bordered">
                 <thead>
-                  <tr><th>Documento</th><th>Archivo</th><th>Estado</th></tr>
+                  <tr>
+                    <th style="width:45%;">Documento</th>
+                    <th style="width:35%;">Archivo</th>
+                    <th style="width:20%;">Estado</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {% for doc in DOCUMENTOS_OBLIGATORIOS %}
@@ -250,60 +196,65 @@
                         {% endfor %}
                         {% if not encontrado %}-{% endif %}
                       </td>
-                      <td>{% if encontrado %}🟢{% else %}❌{% endif %}</td>
+                      <td>
+                        {% if encontrado %}🟢 Subido{% else %}❌ Pendiente{% endif %}
+                      </td>
                     </tr>
                   {% endfor %}
                 </tbody>
               </table>
             {% endif %}
           {% endfor %}
+
         </div>
       {% else %}
-        <p>No hay proveedores aprobados.</p>
+        <div class="card">
+          <p class="mb-0">No hay proveedores que coincidan con el filtro.</p>
+        </div>
       {% endfor %}
     </div>
 
-    <!-- ===================== PESTAÑA PENDIENTES ===================== -->
+    <!-- TAB Pendientes -->
     <div class="tab-pane fade" id="pendientes">
       <div class="card">
-        <h5>Usuarios pendientes</h5>
         {% if pendientes %}
-          <table class="table table-bordered mt-3">
+          <table class="table table-bordered">
             <thead>
-              <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Acciones</th></tr>
+              <tr>
+                <th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Acciones</th>
+              </tr>
             </thead>
             <tbody>
-              {% for u in pendientes %}
+              {% for p in pendientes %}
                 <tr>
-                  <td>{{ u['nombre'] }}</td>
-                  <td>{{ u['usuario'] }}</td>
-                  <td>{{ u['correo'] }}</td>
-                  <td>{% if u['rol']==1 %}Admin{% else %}Proveedor{% endif %}</td>
+                  <td>{{ p['nombre'] }}</td>
+                  <td>{{ p['usuario'] }}</td>
+                  <td>{{ p['correo'] }}</td>
+                  <td>{% if p['rol']==1 %}Admin{% else %}Proveedor{% endif %}</td>
                   <td>
-                    <a href="{{ url_for('accion', id=u['id'], accion='aprobar') }}" class="btn btn-success btn-sm">Aprobar</a>
-                    <a href="{{ url_for('accion', id=u['id'], accion='rechazar') }}" class="btn btn-danger btn-sm">Rechazar</a>
+                    <a href="{{ url_for('accion', id=p['id'], accion='aprobar') }}" class="btn btn-success btn-sm">Aprobar</a>
+                    <a href="{{ url_for('accion', id=p['id'], accion='rechazar') }}" class="btn btn-danger btn-sm">Rechazar</a>
                   </td>
                 </tr>
               {% endfor %}
             </tbody>
           </table>
         {% else %}
-          <p>No hay usuarios pendientes.</p>
+          <p class="mb-0">No hay usuarios pendientes.</p>
         {% endif %}
       </div>
     </div>
 
-    <!-- ===================== PESTAÑA GESTIÓN (SIN FILTRO) ===================== -->
+    <!-- TAB Gestión -->
     <div class="tab-pane fade" id="gestion">
       <div class="card">
-        <h5>Gestión de usuarios (proveedores aprobados)</h5>
-        {% if proveedores_all %}
-          <table class="table table-bordered table-striped mt-3">
+        {% if proveedores_todos %}
+          <table class="table table-bordered table-striped">
             <thead>
               <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Acciones</th></tr>
             </thead>
             <tbody>
-              {% for p in proveedores_all %}
+              {% for p in proveedores_todos %}
                 <tr id="user-row-{{ p['id'] }}">
                   <td>{{ p['nombre'] }}</td>
                   <td>{{ p['usuario'] }}</td>
@@ -316,66 +267,17 @@
             </tbody>
           </table>
         {% else %}
-          <p>No hay proveedores aprobados.</p>
+          <p class="mb-0">No hay proveedores aprobados.</p>
         {% endif %}
       </div>
     </div>
 
-    <!-- ===================== PESTAÑA DATOS PROVEEDOR (TARJETAS + BÚSQUEDA) ===================== -->
-    <div class="tab-pane fade" id="datosProveedor">
-      <div class="card">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <h5 class="mb-0">Información registrada de proveedores</h5>
-          <span class="badge-soft">Total: {{ proveedores_all|length }}</span>
-        </div>
-
-        <div class="mt-3">
-          <input id="providerInfoSearch" type="text" class="form-control"
-                 placeholder="Buscar por nombre / usuario / correo / RFC / REPSE...">
-          <div class="hint">Filtra en vivo (sin recargar).</div>
-        </div>
-
-        <div class="mt-3" id="providerInfoList">
-          {% for p in proveedores_all %}
-            <div class="provider-card provider-item"
-              data-search="{{ (p['nombre'] ~ ' ' ~ p['usuario'] ~ ' ' ~ p['correo'] ~ ' ' ~ (p.get('rfc','') or '') ~ ' ' ~ (p.get('repse_numero','') or '')) | lower }}">
-
-              <h6 class="mb-1">{{ p['nombre'] }} <span class="text-muted">({{ p['usuario'] }})</span></h6>
-              <div class="provider-meta">📧 <b>{{ p['correo'] }}</b></div>
-
-              <hr>
-
-              <div class="row g-2">
-                <div class="col-md-6"><div class="provider-meta">Número REPSE: <b>{{ p.get('repse_numero') or '-' }}</b></div></div>
-                <div class="col-md-6"><div class="provider-meta">Folio: <b>{{ p.get('registro_folio') or '-' }}</b></div></div>
-
-                <div class="col-md-6"><div class="provider-meta">Aviso / Fecha aviso: <b>{{ p.get('aviso_registro') or '-' }}</b></div></div>
-                <div class="col-md-6"><div class="provider-meta">Vigencia: <b>{{ p.get('vigencia') or '-' }}</b></div></div>
-
-                <div class="col-md-6"><div class="provider-meta">RFC: <b>{{ p.get('rfc') or '-' }}</b></div></div>
-                <div class="col-md-6"><div class="provider-meta">Régimen Patronal: <b>{{ p.get('regimen_patronal') or '-' }}</b></div></div>
-
-                <div class="col-12"><div class="provider-meta">Objeto del Servicio: <b>{{ p.get('objeto_servicio') or '-' }}</b></div></div>
-
-                <div class="col-md-4"><div class="provider-meta">Contacto: <b>{{ p.get('contacto_nombre') or '-' }}</b></div></div>
-                <div class="col-md-4"><div class="provider-meta">Teléfono: <b>{{ p.get('contacto_telefono') or '-' }}</b></div></div>
-                <div class="col-md-4"><div class="provider-meta">Correo contacto: <b>{{ p.get('contacto_correo') or '-' }}</b></div></div>
-              </div>
-            </div>
-          {% else %}
-            <p>No hay proveedores aprobados.</p>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-
-    <!-- ===================== PESTAÑA RECORDATORIOS ===================== -->
+    <!-- TAB Recordatorios -->
     <div class="tab-pane fade" id="recordatorios">
       <div class="card">
         <h5>Enviar recordatorio</h5>
-
         <form id="form-reminder">
-          {% for p in proveedores_all %}
+          {% for p in proveedores_todos %}
             <div class="form-check">
               <input class="form-check-input" type="checkbox" value="{{ p['id'] }}" id="provider{{ p['id'] }}">
               <label class="form-check-label" for="provider{{ p['id'] }}">
@@ -387,34 +289,25 @@
           <input type="text" class="form-control my-2" placeholder="Asunto" id="reminder_subject">
           <textarea class="form-control my-2" rows="3" placeholder="Mensaje..." id="reminder_message"></textarea>
 
-          <button type="submit" class="btn btn-primary fw-bold">Enviar</button>
+          <button type="submit" class="btn btn-primary">Enviar</button>
         </form>
-
         <div id="reminder_status" class="mt-2"></div>
       </div>
     </div>
 
   </div>
 
-  <a href="{{ url_for('logout') }}" class="logout-btn mt-3">Cerrar sesión</a>
+  <a href="{{ url_for('logout') }}" class="btn logout-btn mt-3">Cerrar sesión</a>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-  // --- Filtro en vivo (Datos de proveedor)
-  $('#providerInfoSearch').on('input', function(){
-    const q = ($(this).val() || '').toLowerCase().trim();
-    $('.provider-item').each(function(){
-      const hay = ($(this).data('search') || '');
-      $(this).toggle(hay.includes(q));
-    });
-  });
-
-  // --- Recordatorios (stub)
+  // Recordatorios
   $('#form-reminder').on('submit', function(e){
     e.preventDefault();
     let provider_ids = [];
+
     $('#form-reminder input[type=checkbox]:checked').each(function(){
       provider_ids.push($(this).val());
     });
@@ -437,9 +330,9 @@
     });
   });
 
-  // --- Eliminar usuario
+  // Eliminar usuario
   $('.delete-user-btn').click(function(){
-    if(!confirm('¿Eliminar usuario? Se borrarán sus proyectos y documentos.')) return;
+    if(!confirm('¿Eliminar usuario?')) return;
     let id = $(this).data('id');
 
     $.ajax({
@@ -448,20 +341,17 @@
       contentType: 'application/json',
       data: JSON.stringify({id}),
       success: function(res){
-        alert(res.msg);
         if(res.success){
           $('#user-row-'+id).remove();
         }
-      },
-      error: function(){
-        alert('Error eliminando usuario.');
+        alert(res.msg);
       }
     });
   });
 
-  // --- Eliminar proyecto
+  // Eliminar proyecto
   $('.delete-project-btn').click(function(){
-    if(!confirm('¿Eliminar este proyecto? Se borrarán documentos del proyecto.')) return;
+    if(!confirm('¿Eliminar proyecto y sus documentos?')) return;
     let project_id = $(this).data('project');
 
     $.ajax({
@@ -470,10 +360,8 @@
       contentType: 'application/json',
       data: JSON.stringify({project_id}),
       success: function(res){
-        alert(res.msg);
-        if(res.success){
-          location.reload();
-        }
+        alert(res.msg || 'Proyecto eliminado');
+        location.reload();
       },
       error: function(){
         alert('Error al eliminar proyecto.');

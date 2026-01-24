@@ -1,121 +1,85 @@
-<!-- templates/dashboard_admin.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Administrador - REPSE</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
   <style>
-    body{
+    body {
       background: linear-gradient(135deg, #ff6a00, #ff007b, #6600ff);
       background-size: 300% 300%;
       animation: gradientShift 10s ease infinite;
-      color:#fff; min-height:100vh;
+      color: #fff;
+      min-height: 100vh;
     }
-    @keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
 
-    .card{
-      background: rgba(255,255,255,0.92);
-      color:#222;
-      border-radius:14px;
-      padding:18px;
-      margin-bottom:16px;
-      box-shadow: 0 8px 18px rgba(0,0,0,0.10);
+    .card {
+      background: rgba(255,255,255,0.95);
+      color: #333;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 18px;
     }
-    .card.soft{
-      background: rgba(255,255,255,0.16);
-      color:#fff;
+
+    .table th { background-color: #ff6a00; color: white; }
+    .nav-tabs { border-bottom: 3px solid rgba(255,255,255,0.3); margin-bottom: 15px; }
+    .nav-tabs .nav-link {
+      color: rgba(255,255,255,0.9);
+      font-weight: 600;
+      border: none;
+      border-bottom: 3px solid transparent;
+      transition: all 0.3s ease;
+    }
+    .nav-tabs .nav-link:hover { color: #fff; border-bottom: 3px solid rgba(255,255,255,0.5); }
+    .nav-tabs .nav-link.active { background-color: transparent !important; border-bottom: 3px solid #fff; }
+
+    .logout-btn {
+      background-color: rgba(255,255,255,0.2);
+      color: #fff;
+      border: 1px solid #fff;
+      transition: all 0.3s ease;
+      border-radius: 12px;
+    }
+    .logout-btn:hover { background-color: #fff; color: #6600ff; }
+
+    .filter-card{
+      background: rgba(255,255,255,0.18);
       border: 1px solid rgba(255,255,255,0.25);
-      box-shadow:none;
+      color:#fff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 18px;
       backdrop-filter: blur(6px);
     }
-
-    .table{ background: rgba(255,255,255,0.96); border-radius: 12px; overflow:hidden; }
-    .table th{ background-color:#ff6a00; color:#fff; }
-    .table td, .table th{ vertical-align: middle; }
-
-    .nav-tabs{
-      border-bottom: 3px solid rgba(255,255,255,0.25);
-      margin-bottom: 14px;
-      gap: 6px;
-    }
-    .nav-tabs .nav-link{
-      color: rgba(255,255,255,0.9);
-      font-weight:600;
-      border:none;
-      border-bottom: 3px solid transparent;
-      transition: all .2s ease;
-      padding: 10px 14px;
-      border-radius: 12px 12px 0 0;
-      background: rgba(255,255,255,0.12);
-    }
-    .nav-tabs .nav-link:hover{ background: rgba(255,255,255,0.18); }
-    .nav-tabs .nav-link.active{
-      background: rgba(255,255,255,0.25) !important;
-      color:#fff !important;
-      border-bottom:3px solid rgba(255,255,255,0.65);
+    .filter-card label{ font-weight:600; }
+    .filter-card .form-control, .filter-card .form-select{
+      background: rgba(255,255,255,0.95);
+      border-radius: 10px;
     }
 
-    .logout-btn{
-      background-color: rgba(255,255,255,0.18);
-      color:#fff;
-      border: 1px solid rgba(255,255,255,0.65);
-      border-radius: 12px;
-    }
-    .logout-btn:hover{ background:#fff; color:#6600ff; }
-
-    .form-label{ color:#fff; font-weight:600; }
-    .control-card{ margin-top:10px; margin-bottom:18px; }
-    .control-card .form-label{ color:#fff; }
-    .control-card .form-control, .control-card .form-select{
-      background: rgba(255,255,255,0.92);
-      border-radius: 12px;
-    }
-    .badge-soft{
-      background: rgba(255,255,255,0.20);
-      border: 1px solid rgba(255,255,255,0.35);
-      color:#fff;
-    }
-    .muted{ color: rgba(255,255,255,0.85); }
-
-    .provider-card + .provider-card{ margin-top: 14px; } /* separa proveedores */
-    .small-muted{ color:#666; font-size:.92rem; }
-    .pill{
-      display:inline-block;
-      padding:6px 10px;
-      border-radius:999px;
-      background: rgba(0,0,0,0.06);
-      font-weight:600;
-      color:#333;
-      font-size:.9rem;
-    }
-    .pill.white{
-      background: rgba(255,255,255,0.18);
-      border: 1px solid rgba(255,255,255,0.28);
-      color:#fff;
-    }
-
-    .link-btn{ text-decoration:none; font-weight:600; }
-    .link-btn:hover{ text-decoration:underline; }
-
-    .grid-info{
-      display:grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-    @media (max-width: 768px){
-      .grid-info{ grid-template-columns: 1fr; }
-      .nav-tabs .nav-link{ width:100%; border-radius: 12px; }
-    }
-    .kv{
+    .provider-block{ margin-bottom: 18px; }
+    .project-box{
       background: rgba(0,0,0,0.04);
-      padding:10px 12px;
       border-radius: 12px;
+      padding: 12px;
+      margin-top: 12px;
     }
-    .kv b{ display:block; font-size:.86rem; color:#555; }
-    .kv span{ display:block; font-weight:700; color:#222; }
+    .muted { color: rgba(255,255,255,0.85); }
+    .badge-soft{
+      background: rgba(0,0,0,0.06);
+      color:#333;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 700;
+      font-size: .85rem;
+    }
   </style>
 </head>
 
@@ -125,7 +89,7 @@
 
   {% with messages = get_flashed_messages() %}
     {% if messages %}
-      <div class="card soft">
+      <div class="filter-card">
         {% for m in messages %}• {{ m }}<br>{% endfor %}
       </div>
     {% endif %}
@@ -138,26 +102,31 @@
         Proveedores
       </button>
     </li>
+
     <li class="nav-item">
       <button class="nav-link" data-bs-toggle="tab" data-bs-target="#pendientes" type="button">
         Usuarios Pendientes
       </button>
     </li>
+
     <li class="nav-item">
       <button class="nav-link" data-bs-toggle="tab" data-bs-target="#gestion" type="button">
         Gestión de Usuarios
       </button>
     </li>
+
     <li class="nav-item">
       <button class="nav-link" data-bs-toggle="tab" data-bs-target="#recordatorios" type="button">
         Recordatorios
       </button>
     </li>
+
     <li class="nav-item">
       <button class="nav-link" data-bs-toggle="tab" data-bs-target="#meseshabiles" type="button">
         Meses hábiles
       </button>
     </li>
+
     <li class="nav-item">
       <button class="nav-link" data-bs-toggle="tab" data-bs-target="#infoProveedor" type="button">
         Información de proveedor
@@ -167,34 +136,28 @@
 
   <div class="tab-content">
 
-    <!-- ================== TAB PROVEEDORES ================== -->
+    <!-- ===================== PROVEEDORES ===================== -->
     <div class="tab-pane fade show active" id="proveedores">
 
-      <!-- Filtros -->
-      <div class="card soft control-card">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-          <div class="pill white">Filtros de proveedores</div>
-          <div class="small muted">Puedes filtrar por proveedor(es), año, mes y búsqueda (pedido/proyecto).</div>
-        </div>
-
+      <!-- FILTROS -->
+      <div class="filter-card">
         <form method="GET" action="{{ url_for('dashboard_admin') }}">
           <div class="row g-2 align-items-end">
             <div class="col-12 col-lg-4">
-              <label class="form-label">Proveedores</label>
+              <label class="form-label">Proveedores (multiselección)</label>
               <select class="form-select" name="providers" multiple size="6">
                 {% for p in proveedores_all %}
-                  <option value="{{ p['id'] }}"
-                    {% if p['id'] in selected_provider_ids %}selected{% endif %}>
+                  <option value="{{ p['id'] }}" {% if p['id'] in selected_provider_ids %}selected{% endif %}>
                     {{ p['nombre'] }} ({{ p['usuario'] }})
                   </option>
                 {% endfor %}
               </select>
-              <div class="small muted mt-1">Tip: Ctrl / Cmd para seleccionar varios.</div>
+              <div class="small muted mt-1">Ctrl/Cmd para seleccionar varios.</div>
             </div>
 
             <div class="col-6 col-lg-2">
               <label class="form-label">Año</label>
-              <input class="form-control" type="number" name="year" placeholder="2026" value="{{ selected_year or '' }}">
+              <input class="form-control" type="number" name="year" value="{{ selected_year or '' }}" placeholder="2026">
             </div>
 
             <div class="col-6 col-lg-3">
@@ -209,11 +172,11 @@
 
             <div class="col-12 col-lg-3">
               <label class="form-label">Búsqueda</label>
-              <input class="form-control" name="q" placeholder="Pedido, nombre de proyecto..." value="{{ q }}">
+              <input class="form-control" name="q" value="{{ q }}" placeholder="Pedido o nombre de proyecto...">
             </div>
 
             <div class="col-12 d-flex gap-2 mt-2">
-              <button class="btn btn-light fw-bold" type="submit">Aplicar filtros</button>
+              <button class="btn btn-light fw-bold" type="submit">Aplicar</button>
               <a class="btn btn-outline-light" href="{{ url_for('dashboard_admin') }}">Limpiar</a>
             </div>
           </div>
@@ -222,186 +185,148 @@
 
       {% if proveedores %}
         {% for p in proveedores %}
-          <div class="card provider-card">
+          <div class="card provider-block">
             <div class="d-flex justify-content-between flex-wrap gap-2">
               <div>
-                <h5 class="mb-1">{{ p['nombre'] }} <span class="small-muted">({{ p['usuario'] }})</span></h5>
-                <div class="small-muted">{{ p['correo'] }}</div>
+                <h5 class="mb-1">{{ p['nombre'] }} <span class="text-muted">({{ p['usuario'] }})</span></h5>
+                <div class="text-muted">{{ p['correo'] }}</div>
               </div>
-              <div class="d-flex gap-2 align-items-center">
-                <span class="pill">ID: {{ p['id'] }}</span>
-              </div>
+              <div class="badge-soft">ID: {{ p['id'] }}</div>
             </div>
 
             {% set docs_by_user = documentos_por_usuario.get(p['id'], {}) %}
             {% set global_docs = docs_by_user.get(0, []) %}
 
-            <!-- Documentos globales -->
-            <div class="mt-3">
-              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                <div class="pill">Documentos cargados (global)</div>
-                <div class="small-muted">Estos documentos aplican a los pedidos (según lo marque el proveedor).</div>
-              </div>
+            <!-- PEDIDOS -->
+            {% set any_project = False %}
+            {% for project in proyectos %}
+              {% if project['provider_id'] == p['id'] %}
+                {% set any_project = True %}
 
-              <table class="table table-bordered mb-0">
-                <thead>
-                  <tr>
-                    <th style="width:28%;">Documento</th>
-                    <th>Archivo</th>
-                    <th style="width:14%;">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                {% for doc in DOCUMENTOS_OBLIGATORIOS %}
-                  {% set encontrado = False %}
-                  {% set archivo_nombre = "" %}
-                  {% set archivo_key = "" %}
-                  {% for d in global_docs %}
-                    {% if d['tipo_documento'] == doc and not encontrado %}
-                      {% set encontrado = True %}
-                      {% set archivo_nombre = d['nombre_archivo'] %}
-                      {% set archivo_key = d['ruta'] %}
-                    {% endif %}
-                  {% endfor %}
-                  <tr>
-                    <td class="fw-bold">{{ doc }}</td>
-                    <td>
-                      {% if encontrado %}
-                        <a class="link-btn" target="_blank" href="{{ get_presigned_url(archivo_key, archivo_nombre) }}">
-                          Descargar: {{ archivo_nombre }}
-                        </a>
-                      {% else %}
-                        <span class="text-muted">-</span>
-                      {% endif %}
-                    </td>
-                    <td>
-                      {% if encontrado %}
-                        <span class="badge text-bg-success">Cargado</span>
-                      {% else %}
-                        <span class="badge text-bg-danger">Pendiente</span>
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Pedidos / proyectos -->
-            <div class="mt-4">
-              <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                <div class="pill">Pedidos / Proyectos</div>
-                <div class="small-muted">Aquí se muestran los pedidos filtrados por tus criterios.</div>
-              </div>
-
-              {% set any_project = False %}
-              {% for project in proyectos %}
-                {% if project['provider_id'] == p['id'] %}
-                  {% set any_project = True %}
-                  <div class="card" style="padding:14px; margin-bottom:12px; border-radius:14px;">
-                    <div class="d-flex justify-content-between flex-wrap gap-2">
-                      <div>
-                        <div class="fw-bold">
-                          {{ project['name'] }}
-                          {% if project.get('pedido_no') %}
-                            <span class="badge text-bg-primary ms-1">Pedido: {{ project['pedido_no'] }}</span>
-                          {% endif %}
-                        </div>
-                        <div class="small-muted">
-                          Periodo:
-                          {% if project.get('periodo_month') and project.get('periodo_year') %}
-                            {{ months.get(project['periodo_month'], project['periodo_month']) }} {{ project['periodo_year'] }}
-                          {% else %}
-                            -
-                          {% endif %}
-                          · Creado: {{ project['created_at'] }}
-                          · Completado: {% if project.get('completed') == 1 %}Sí{% else %}No{% endif %}
-                        </div>
+                <div class="project-box">
+                  <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center">
+                    <div>
+                      <div class="fw-bold">
+                        {{ project['name'] }}
+                        {% if project.get('pedido_no') %}
+                          <span class="badge text-bg-primary ms-1">Pedido: {{ project['pedido_no'] }}</span>
+                        {% endif %}
                       </div>
 
-                      <div class="d-flex gap-2">
-                        <button class="btn btn-outline-danger btn-sm delete-project-btn"
-                                data-project-id="{{ project['id'] }}">
-                          Eliminar pedido
-                        </button>
+                      <div class="text-muted small">
+                        Periodo:
+                        {% if project.get('periodo_month') and project.get('periodo_year') %}
+                          {{ months.get(project['periodo_month'], project['periodo_month']) }} {{ project['periodo_year'] }}
+                        {% else %}
+                          -
+                        {% endif %}
+                        · Creado: {{ project['created_at'] }}
+                        · Estado:
+                        {% if project.get('completed') == 1 %}
+                          <span class="badge text-bg-success">Completado</span>
+                        {% else %}
+                          <span class="badge text-bg-warning text-dark">En progreso</span>
+                        {% endif %}
                       </div>
                     </div>
 
-                    {% set docs_project = docs_by_user.get(project['id'], []) %}
-                    <div class="mt-3">
-                      <table class="table table-bordered mb-0">
-                        <thead>
-                          <tr>
-                            <th style="width:28%;">Documento</th>
-                            <th>Archivo</th>
-                            <th style="width:14%;">Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {% for doc in DOCUMENTOS_OBLIGATORIOS %}
-                            {% set ok = False %}
+                    <div class="d-flex gap-2">
+                      <button class="btn btn-outline-danger btn-sm delete-project-btn" data-project-id="{{ project['id'] }}">
+                        Eliminar pedido
+                      </button>
+                    </div>
+                  </div>
+
+                  {% set pd = project_docs_map.get(project['id'], {}) %}
+
+                  <!-- SOLO DOCS MARCADOS COMO APLICA -->
+                  <div class="mt-3">
+                    {% set any_aplica = False %}
+                    <table class="table table-bordered mb-0">
+                      <thead>
+                        <tr>
+                          <th>Documento (aplica)</th>
+                          <th>Archivo a descargar</th>
+                          <th style="width:170px;">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+
+                        {% for doc in DOCUMENTOS_OBLIGATORIOS %}
+                          {% if pd.get(doc) and pd.get(doc)['aplica'] %}
+                            {% set any_aplica = True %}
+
+                            {# buscar el archivo global del tipo doc #}
+                            {% set encontrado = False %}
                             {% set fn = "" %}
                             {% set key = "" %}
-                            {% for d in docs_project %}
-                              {% if d['tipo_documento'] == doc and not ok %}
-                                {% set ok = True %}
+                            {% for d in global_docs %}
+                              {% if d['tipo_documento'] == doc and not encontrado %}
+                                {% set encontrado = True %}
                                 {% set fn = d['nombre_archivo'] %}
                                 {% set key = d['ruta'] %}
                               {% endif %}
                             {% endfor %}
+
                             <tr>
                               <td class="fw-bold">{{ doc }}</td>
                               <td>
-                                {% if ok %}
-                                  <a class="link-btn" target="_blank" href="{{ get_presigned_url(key, fn) }}">
+                                {% if encontrado %}
+                                  <a href="{{ get_presigned_url(key, fn) }}" target="_blank">
                                     Descargar: {{ fn }}
                                   </a>
                                 {% else %}
-                                  <span class="text-muted">-</span>
+                                  <span class="text-muted">No subido por proveedor</span>
                                 {% endif %}
                               </td>
                               <td>
-                                {% if ok %}
-                                  <span class="badge text-bg-success">Cargado</span>
+                                {% if project.get('completed') == 1 %}
+                                  <span class="badge text-bg-success">Completado</span>
                                 {% else %}
-                                  <span class="badge text-bg-secondary">Sin archivo</span>
+                                  <span class="badge text-bg-secondary">Pendiente</span>
                                 {% endif %}
                               </td>
                             </tr>
-                          {% endfor %}
-                        </tbody>
-                      </table>
-                    </div>
+                          {% endif %}
+                        {% endfor %}
+
+                        {% if not any_aplica %}
+                          <tr>
+                            <td colspan="3" class="text-muted">
+                              Este pedido aún no tiene documentos marcados como “aplica”.
+                            </td>
+                          </tr>
+                        {% endif %}
+                      </tbody>
+                    </table>
                   </div>
-                {% endif %}
-              {% endfor %}
 
-              {% if not any_project %}
-                <div class="small-muted">Este proveedor no tiene pedidos/proyectos (con los filtros actuales).</div>
+                </div>
               {% endif %}
-            </div>
+            {% endfor %}
 
+            {% if not any_project %}
+              <div class="text-muted mt-2">No hay pedidos/proyectos para este proveedor con los filtros actuales.</div>
+            {% endif %}
           </div>
         {% endfor %}
       {% else %}
-        <div class="card soft">
-          <b>No hay proveedores para mostrar</b><br>
-          <span class="muted">Revisa tus filtros o limpia para ver todos.</span>
+        <div class="filter-card">
+          <b>No hay proveedores para mostrar.</b><br>
+          <span class="muted">Limpia filtros para ver todos.</span>
         </div>
       {% endif %}
     </div>
 
-    <!-- ================== TAB PENDIENTES ================== -->
+    <!-- ===================== PENDIENTES ===================== -->
     <div class="tab-pane fade" id="pendientes">
       <div class="card">
-        <h5 class="mb-3">Usuarios pendientes</h5>
+        <h5>Usuarios pendientes</h5>
 
         {% if pendientes %}
-          <table class="table table-bordered">
+          <table class="table table-bordered mt-3">
             <thead>
-              <tr>
-                <th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th style="width:200px;">Acciones</th>
-              </tr>
+              <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Acciones</th></tr>
             </thead>
             <tbody>
               {% for u in pendientes %}
@@ -409,7 +334,7 @@
                   <td>{{ u['nombre'] }}</td>
                   <td>{{ u['usuario'] }}</td>
                   <td>{{ u['correo'] }}</td>
-                  <td>{% if u['rol'] == 1 %}Admin{% else %}Proveedor{% endif %}</td>
+                  <td>{% if u['rol']==1 %}Admin{% else %}Proveedor{% endif %}</td>
                   <td>
                     <a href="{{ url_for('accion', id=u['id'], accion='aprobar') }}" class="btn btn-success btn-sm">Aprobar</a>
                     <a href="{{ url_for('accion', id=u['id'], accion='rechazar') }}" class="btn btn-danger btn-sm">Rechazar</a>
@@ -419,22 +344,20 @@
             </tbody>
           </table>
         {% else %}
-          <div class="text-muted">No hay usuarios pendientes.</div>
+          <p class="text-muted mt-2">No hay usuarios pendientes.</p>
         {% endif %}
       </div>
     </div>
 
-    <!-- ================== TAB GESTIÓN ================== -->
+    <!-- ===================== GESTIÓN ===================== -->
     <div class="tab-pane fade" id="gestion">
       <div class="card">
-        <h5 class="mb-3">Gestión de usuarios (proveedores)</h5>
+        <h5>Gestión de Usuarios</h5>
 
         {% if proveedores_all %}
-          <table class="table table-bordered table-striped">
+          <table class="table table-bordered table-striped mt-3">
             <thead>
-              <tr>
-                <th>Nombre</th><th>Usuario</th><th>Correo</th><th style="width:160px;">Acciones</th>
-              </tr>
+              <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Acciones</th></tr>
             </thead>
             <tbody>
               {% for p in proveedores_all %}
@@ -443,57 +366,49 @@
                   <td>{{ p['usuario'] }}</td>
                   <td>{{ p['correo'] }}</td>
                   <td>
-                    <button class="btn btn-danger btn-sm delete-user-btn" data-id="{{ p['id'] }}">
-                      Eliminar
-                    </button>
+                    <button class="btn btn-danger btn-sm delete-user-btn" data-id="{{ p['id'] }}">Eliminar</button>
                   </td>
                 </tr>
               {% endfor %}
             </tbody>
           </table>
         {% else %}
-          <div class="text-muted">No hay proveedores aprobados.</div>
+          <p class="text-muted mt-2">No hay proveedores aprobados.</p>
         {% endif %}
       </div>
     </div>
 
-    <!-- ================== TAB RECORDATORIOS ================== -->
+    <!-- ===================== RECORDATORIOS ===================== -->
     <div class="tab-pane fade" id="recordatorios">
       <div class="card">
-        <h5 class="mb-3">Enviar recordatorio</h5>
+        <h5>Enviar recordatorio</h5>
 
         <form id="form-reminder">
-          <div class="mb-2 fw-bold">Selecciona proveedores:</div>
-
-          <div class="row">
-            {% for p in proveedores_all %}
-              <div class="col-12 col-md-6 col-lg-4">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" value="{{ p['id'] }}" id="provider{{ p['id'] }}">
-                  <label class="form-check-label" for="provider{{ p['id'] }}">
-                    {{ p['nombre'] }} ({{ p['correo'] }})
-                  </label>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
+          {% for p in proveedores_all %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" value="{{ p['id'] }}" id="provider{{ p['id'] }}">
+              <label class="form-check-label" for="provider{{ p['id'] }}">
+                {{ p['nombre'] }} ({{ p['correo'] }})
+              </label>
+            </div>
+          {% endfor %}
 
           <input type="text" class="form-control my-2" placeholder="Asunto" id="reminder_subject">
           <textarea class="form-control my-2" rows="3" placeholder="Mensaje..." id="reminder_message"></textarea>
 
-          <button type="submit" class="btn btn-primary fw-bold">Enviar</button>
+          <button type="submit" class="btn btn-primary">Enviar</button>
         </form>
 
-        <div id="reminder_status" class="mt-2 small-muted"></div>
+        <div id="reminder_status" class="mt-2 text-muted"></div>
       </div>
     </div>
 
-    <!-- ================== TAB MESES HÁBILES ================== -->
+    <!-- ===================== MESES HÁBILES ===================== -->
     <div class="tab-pane fade" id="meseshabiles">
       <div class="card">
-        <h5 class="mb-3">Meses hábiles (habilitar acceso a pedidos)</h5>
+        <h5>Meses hábiles</h5>
 
-        <div class="row g-2 align-items-end">
+        <div class="row g-2 align-items-end mt-2">
           <div class="col-12 col-lg-4">
             <label class="form-label text-dark fw-bold">Proveedor</label>
             <select class="form-select" id="ep_provider">
@@ -503,10 +418,12 @@
               {% endfor %}
             </select>
           </div>
+
           <div class="col-6 col-lg-2">
             <label class="form-label text-dark fw-bold">Año</label>
             <input type="number" class="form-control" id="ep_year" placeholder="2026">
           </div>
+
           <div class="col-6 col-lg-3">
             <label class="form-label text-dark fw-bold">Mes</label>
             <select class="form-select" id="ep_month">
@@ -516,6 +433,7 @@
               {% endfor %}
             </select>
           </div>
+
           <div class="col-12 col-lg-3 d-grid">
             <button class="btn btn-success fw-bold" id="btnEnableMonth" type="button">Habilitar mes</button>
           </div>
@@ -527,75 +445,47 @@
         {% if enabled_periods %}
           <table class="table table-bordered">
             <thead>
-              <tr>
-                <th>Proveedor</th><th>Periodo</th><th>Creado</th><th style="width:160px;">Acciones</th>
-              </tr>
+              <tr><th>Proveedor</th><th>Periodo</th><th>Acción</th></tr>
             </thead>
             <tbody>
               {% for ep in enabled_periods %}
                 <tr id="ep-row-{{ ep['id'] }}">
                   <td>{{ ep['nombre'] }} ({{ ep['usuario'] }})</td>
                   <td>{{ months.get(ep['periodo_month'], ep['periodo_month']) }} {{ ep['periodo_year'] }}</td>
-                  <td>{{ ep['created_at'] }}</td>
                   <td>
-                    <button class="btn btn-outline-danger btn-sm disable-month-btn" data-id="{{ ep['id'] }}">
-                      Deshabilitar
-                    </button>
+                    <button class="btn btn-outline-danger btn-sm disable-month-btn" data-id="{{ ep['id'] }}">Deshabilitar</button>
                   </td>
                 </tr>
               {% endfor %}
             </tbody>
           </table>
         {% else %}
-          <div class="text-muted">Aún no has habilitado meses.</div>
+          <p class="text-muted">Aún no has habilitado meses.</p>
         {% endif %}
       </div>
     </div>
 
-    <!-- ================== TAB INFO PROVEEDOR ================== -->
+    <!-- ===================== INFO PROVEEDOR ===================== -->
     <div class="tab-pane fade" id="infoProveedor">
       <div class="card">
-        <div class="d-flex justify-content-between flex-wrap gap-2 align-items-center mb-2">
-          <h5 class="mb-0">Información de proveedor</h5>
-          <input class="form-control" id="providerInfoSearch" style="max-width:360px;" placeholder="Buscar por nombre/usuario/correo...">
-        </div>
+        <h5>Información de proveedor</h5>
+        <input class="form-control mt-2" id="providerInfoSearch" placeholder="Buscar por nombre/usuario/correo...">
 
-        <div class="small text-muted mb-3">
-          Se muestran todos los datos disponibles del proveedor (si alguna columna no existe o está vacía, se omite).
-        </div>
-
-        <div id="providerInfoGrid">
+        <div id="providerInfoGrid" class="mt-3">
           {% for p in proveedores_all %}
-          <div class="card mb-3 provider-info-card" style="border-radius:14px;"
-               data-search="{{ (p['nombre'] ~ ' ' ~ p['usuario'] ~ ' ' ~ p['correo'])|lower }}">
-            <div class="d-flex justify-content-between flex-wrap gap-2">
-              <div>
-                <div class="fw-bold fs-5">{{ p['nombre'] }}</div>
-                <div class="small-muted">{{ p['usuario'] }} · {{ p['correo'] }}</div>
+            <div class="card mb-3 provider-info-card"
+                 data-search="{{ (p['nombre'] ~ ' ' ~ p['usuario'] ~ ' ' ~ p['correo'])|lower }}">
+              <div class="fw-bold">{{ p['nombre'] }}</div>
+              <div class="text-muted">{{ p['usuario'] }} · {{ p['correo'] }}</div>
+
+              <div class="mt-2">
+                {% for key,val in p.items() %}
+                  {% if key not in ['password'] and val and key not in ['rol'] %}
+                    <div class="small"><b>{{ key }}:</b> {{ val }}</div>
+                  {% endif %}
+                {% endfor %}
               </div>
-              <div class="pill">ID: {{ p['id'] }}</div>
             </div>
-
-            <div class="grid-info mt-3">
-              <div class="kv"><b>Usuario</b><span>{{ p['usuario'] }}</span></div>
-              <div class="kv"><b>Correo</b><span>{{ p['correo'] }}</span></div>
-
-              {% if p.get('telefono') %}<div class="kv"><b>Teléfono</b><span>{{ p['telefono'] }}</span></div>{% endif %}
-              {% if p.get('rfc') %}<div class="kv"><b>RFC</b><span>{{ p['rfc'] }}</span></div>{% endif %}
-              {% if p.get('razon_social') %}<div class="kv"><b>Razón social</b><span>{{ p['razon_social'] }}</span></div>{% endif %}
-              {% if p.get('representante') %}<div class="kv"><b>Representante</b><span>{{ p['representante'] }}</span></div>{% endif %}
-              {% if p.get('domicilio') %}<div class="kv"><b>Domicilio</b><span>{{ p['domicilio'] }}</span></div>{% endif %}
-              {% if p.get('cp') %}<div class="kv"><b>CP</b><span>{{ p['cp'] }}</span></div>{% endif %}
-              {% if p.get('ciudad') %}<div class="kv"><b>Ciudad</b><span>{{ p['ciudad'] }}</span></div>{% endif %}
-              {% if p.get('estado') %}<div class="kv"><b>Estado</b><span>{{ p['estado'] }}</span></div>{% endif %}
-              {% if p.get('pais') %}<div class="kv"><b>País</b><span>{{ p['pais'] }}</span></div>{% endif %}
-
-              {% if p.get('repse') %}<div class="kv"><b>REPSE</b><span>{{ p['repse'] }}</span></div>{% endif %}
-              {% if p.get('curp') %}<div class="kv"><b>CURP</b><span>{{ p['curp'] }}</span></div>{% endif %}
-              {% if p.get('nss') %}<div class="kv"><b>NSS</b><span>{{ p['nss'] }}</span></div>{% endif %}
-              {% if p.get('reg_patronal') %}<div class="kv"><b>Registro patronal</b><span>{{ p['reg_patronal'] }}</span></div>{% endif %}
-            </div>
-          </div>
           {% endfor %}
         </div>
       </div>
@@ -637,7 +527,7 @@
 
   // Eliminar usuario
   $(document).on('click', '.delete-user-btn', function(){
-    if(!confirm('¿Eliminar usuario? También se borrarán sus proyectos y documentos.')) return;
+    if(!confirm('¿Eliminar usuario?')) return;
     let id = $(this).data('id');
 
     $.ajax({
@@ -650,16 +540,13 @@
         if(res.success){
           $('#user-row-'+id).remove();
         }
-      },
-      error: function(){
-        alert('Error al eliminar usuario.');
       }
     });
   });
 
-  // Eliminar proyecto/pedido
+  // Eliminar proyecto
   $(document).on('click', '.delete-project-btn', function(){
-    if(!confirm('¿Eliminar este pedido/proyecto? Se borrarán sus documentos asociados.')) return;
+    if(!confirm('¿Eliminar este pedido/proyecto?')) return;
     let project_id = $(this).data('project-id');
 
     $.ajax({
@@ -669,33 +556,25 @@
       data: JSON.stringify({project_id: project_id}),
       success: function(res){
         alert(res.msg);
-        if(res.success){
-          location.reload();
-        }
-      },
-      error: function(){
-        alert('Error al eliminar proyecto.');
+        if(res.success) location.reload();
       }
     });
   });
 
   // Habilitar mes
   $('#btnEnableMonth').on('click', function(){
-    let provider_id = $('#ep_provider').val();
-    let year = $('#ep_year').val();
-    let month = $('#ep_month').val();
-
     $.ajax({
       url: "{{ url_for('enable_month') }}",
       type: 'POST',
       contentType: 'application/json',
-      data: JSON.stringify({provider_id: provider_id, year: year, month: month}),
+      data: JSON.stringify({
+        provider_id: $('#ep_provider').val(),
+        year: $('#ep_year').val(),
+        month: $('#ep_month').val()
+      }),
       success: function(res){
         alert(res.msg);
         if(res.success) location.reload();
-      },
-      error: function(){
-        alert('Error al habilitar mes.');
       }
     });
   });
@@ -712,17 +591,12 @@
       data: JSON.stringify({id: id}),
       success: function(res){
         alert(res.msg);
-        if(res.success){
-          $('#ep-row-'+id).remove();
-        }
-      },
-      error: function(){
-        alert('Error al deshabilitar mes.');
+        if(res.success) $('#ep-row-'+id).remove();
       }
     });
   });
 
-  // Buscador (Información de proveedor)
+  // Buscador info proveedor
   $('#providerInfoSearch').on('input', function(){
     const q = ($(this).val() || '').toLowerCase().trim();
     $('.provider-info-card').each(function(){

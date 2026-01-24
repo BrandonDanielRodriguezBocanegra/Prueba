@@ -212,7 +212,7 @@ def dashboard_admin():
         flash("Acceso denegado")
         return redirect(url_for("login"))
 
-    # -------- filtros (proveedor / año / mes / búsqueda)
+    # -------- filtros GET --------
     provider_ids = request.args.getlist("providers")
     provider_ids_int = []
     for x in provider_ids:
@@ -220,8 +220,8 @@ def dashboard_admin():
         if xi is not None:
             provider_ids_int.append(xi)
 
-    year = request.args.get("year", "").strip()
-    month = request.args.get("month", "").strip()
+    year = (request.args.get("year", "") or "").strip()
+    month = (request.args.get("month", "") or "").strip()
     q = (request.args.get("q", "") or "").strip()
 
     selected_year = int(year) if year.isdigit() else None
@@ -234,16 +234,16 @@ def dashboard_admin():
     cur.execute("SELECT * FROM usuarios WHERE estado='pendiente' ORDER BY id DESC")
     pendientes = cur.fetchall()
 
-    # proveedores (para select y para pestañas)
+    # proveedores ALL (para selects / otras pestañas)
     cur.execute("SELECT * FROM usuarios WHERE estado='aprobado' AND rol=2 ORDER BY nombre ASC")
     proveedores_all = cur.fetchall()
 
-    # proveedores filtrados para pestaña proveedores
+    # proveedores filtrados (solo pestaña proveedores)
     proveedores = proveedores_all
     if provider_ids_int:
         proveedores = [p for p in proveedores_all if p["id"] in provider_ids_int]
 
-    # proyectos filtrados
+    # -------- proyectos filtrados --------
     where = []
     params = []
 
@@ -271,26 +271,29 @@ def dashboard_admin():
 
     cur.execute(sql_projects, params)
     projects = cur.fetchall()
-
-    # -------- documentos: traer los del project_id visible + globales (project_id NULL)
-    docs = []
     project_ids = [p["id"] for p in projects]
+
+    # -------- documentos (solo globales, porque ahora se suben 1 vez) --------
+    # los ocupamos para mapear descargas por tipo_documento
+    cur.execute("""
+        SELECT * FROM documentos
+        WHERE project_id IS NULL
+        ORDER BY fecha_subida DESC
+    """)
+    global_docs_all = cur.fetchall()
+
+    # -------- project_docs (qué aplica / completed por pedido) --------
+    project_docs_map = {}
     if project_ids:
         cur.execute("""
-            SELECT * FROM documentos
-            WHERE project_id IS NULL OR project_id = ANY(%s)
-            ORDER BY fecha_subida DESC
+            SELECT * FROM project_docs
+            WHERE project_id = ANY(%s)
         """, (project_ids,))
-        docs = cur.fetchall()
-    else:
-        # si no hay proyectos visibles, al menos mostrar globales (y no romper)
-        cur.execute("""
-            SELECT * FROM documentos
-            ORDER BY fecha_subida DESC
-        """)
-        docs = cur.fetchall()
+        rows = cur.fetchall()
+        for r in rows:
+            project_docs_map.setdefault(r["project_id"], {})[r["tipo_documento"]] = r
 
-    # -------- meses habilitados (pestaña)
+    # -------- meses hábiles --------
     cur.execute("""
         SELECT ep.*, u.nombre, u.usuario, u.correo
         FROM enabled_periods ep
@@ -302,10 +305,10 @@ def dashboard_admin():
     cur.close()
     conn.close()
 
-    # agrupar docs por usuario->project (NULL = 0)
+    # agrupar global docs por usuario (solo globales => pid=0)
     docs_by_user = {}
-    for d in docs:
-        pid = d["project_id"] if d["project_id"] is not None else 0
+    for d in global_docs_all:
+        pid = 0
         docs_by_user.setdefault(d["usuario_id"], {}).setdefault(pid, []).append(d)
 
     return render_template(
@@ -314,9 +317,11 @@ def dashboard_admin():
         proveedores_all=proveedores_all,
         proveedores=proveedores,
         proyectos=projects,
-        documentos_por_usuario=docs_by_user,
+        documentos_por_usuario=docs_by_user,  # solo globales por usuario
+        project_docs_map=project_docs_map,
         DOCUMENTOS_OBLIGATORIOS=DOCUMENTOS_OBLIGATORIOS,
-        get_presigned_url=lambda key, name=None: get_presigned_url(key, name),
+        # PASAR LA FUNCIÓN REAL (no lambda) para poder usar (key, nombre)
+        get_presigned_url=get_presigned_url,
         selected_provider_ids=provider_ids_int,
         selected_year=selected_year,
         selected_month=selected_month,
@@ -324,6 +329,7 @@ def dashboard_admin():
         months=MONTHS,
         enabled_periods=enabled_periods
     )
+
 
 @app.route("/admin/accion/<int:id>/<accion>")
 def accion(id, accion):

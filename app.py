@@ -175,17 +175,55 @@ def registro():
 
         password_hash = generate_password_hash(contrasena)
 
+        # ====== CAMPOS EXTRA (solo si es proveedor) ======
+        repse_numero = (request.form.get("repse_numero") or "").strip()
+        repse_folio = (request.form.get("repse_folio") or "").strip()
+        repse_aviso = (request.form.get("repse_aviso") or "").strip()
+        repse_fecha_aviso = request.form.get("repse_fecha_aviso") or None
+        repse_vigencia = request.form.get("repse_vigencia") or None
+
+        repse_rfc = (request.form.get("repse_rfc") or "").strip()          # se guarda en columna usuarios.rfc
+        repse_regimen = (request.form.get("repse_regimen") or "").strip()
+        repse_objeto = (request.form.get("repse_objeto") or "").strip()
+
+        contacto_nombre = (request.form.get("contacto_nombre") or "").strip()
+        contacto_tel = (request.form.get("contacto_tel") or "").strip()
+        contacto_correo = (request.form.get("contacto_correo") or "").strip()
+
         conn = get_conn()
         cur = conn.cursor()
         try:
-            cur.execute(
-                "INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado) "
-                "VALUES(%s,%s,%s,%s,%s,%s)",
-                (nombre, usuario, correo, password_hash, rol, "pendiente")
-            )
+            if rol == 2:
+                cur.execute("""
+                    INSERT INTO usuarios(
+                        nombre, usuario, correo, password, rol, estado,
+                        repse_numero, repse_folio, repse_aviso, repse_fecha_aviso, repse_vigencia,
+                        rfc, repse_regimen, repse_objeto,
+                        contacto_nombre, contacto_tel, contacto_correo
+                    )
+                    VALUES(
+                        %s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,
+                        %s,%s,%s,
+                        %s,%s,%s
+                    )
+                """, (
+                    nombre, usuario, correo, password_hash, rol, "pendiente",
+                    repse_numero, repse_folio, repse_aviso, repse_fecha_aviso, repse_vigencia,
+                    repse_rfc, repse_regimen, repse_objeto,
+                    contacto_nombre, contacto_tel, contacto_correo
+                ))
+            else:
+                # Admin: solo datos base
+                cur.execute("""
+                    INSERT INTO usuarios(nombre, usuario, correo, password, rol, estado)
+                    VALUES(%s,%s,%s,%s,%s,%s)
+                """, (nombre, usuario, correo, password_hash, rol, "pendiente"))
+
             conn.commit()
             flash("Registro exitoso. Espera aprobación del administrador.")
             return redirect(url_for("login"))
+
         except psycopg.errors.UniqueViolation:
             conn.rollback()
             flash("El usuario ya existe.")

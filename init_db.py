@@ -32,15 +32,46 @@ def main():
         estado TEXT NOT NULL,
         mail_password TEXT,
 
-        -- Campos extra (por si tu registro de proveedor ya los usa)
+        -- columnas legacy (si ya las usabas antes, se quedan)
         empresa TEXT,
         rfc TEXT,
         repse TEXT,
         domicilio TEXT,
         telefono TEXT,
-        representante_legal TEXT
+        representante_legal TEXT,
+
+        -- ===== NUEVAS columnas para datos REPSE/Contacto del registro.html =====
+        repse_numero TEXT,
+        repse_folio TEXT,
+        repse_aviso TEXT,
+        repse_fecha_aviso DATE,
+        repse_vigencia DATE,
+        repse_regimen TEXT,
+        repse_objeto TEXT,
+
+        contacto_nombre TEXT,
+        contacto_tel TEXT,
+        contacto_correo TEXT
     )
     """)
+
+    # Si tu tabla ya existía, aseguramos columnas con ALTER (no rompe nada)
+    cur.execute("""
+    ALTER TABLE usuarios
+        ADD COLUMN IF NOT EXISTS repse_numero TEXT,
+        ADD COLUMN IF NOT EXISTS repse_folio TEXT,
+        ADD COLUMN IF NOT EXISTS repse_aviso TEXT,
+        ADD COLUMN IF NOT EXISTS repse_fecha_aviso DATE,
+        ADD COLUMN IF NOT EXISTS repse_vigencia DATE,
+        ADD COLUMN IF NOT EXISTS repse_regimen TEXT,
+        ADD COLUMN IF NOT EXISTS repse_objeto TEXT,
+        ADD COLUMN IF NOT EXISTS contacto_nombre TEXT,
+        ADD COLUMN IF NOT EXISTS contacto_tel TEXT,
+        ADD COLUMN IF NOT EXISTS contacto_correo TEXT
+    """)
+
+    # NOTA: tu formulario manda RFC como "repse_rfc"
+    # y en DB ya tienes columna "rfc" (legacy). La usaremos para guardar ese valor.
 
     # ------------------ TABLA PROJECTS ------------------
     cur.execute("""

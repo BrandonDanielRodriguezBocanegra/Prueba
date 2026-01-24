@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>Requerimientos - REPSE</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
   <style>
     body{
       height:100vh;
@@ -21,7 +20,6 @@
       50%{background-position:100% 50%;}
       100%{background-position:0% 50%;}
     }
-
     .card{
       width: 900px;
       max-width: 95vw;
@@ -32,27 +30,6 @@
       padding: 18px;
       box-shadow: 0 12px 28px rgba(0,0,0,.18);
     }
-
-    .title{
-      font-weight:800;
-      margin-bottom: 4px;
-    }
-    .subtitle{
-      opacity: .95;
-      margin-bottom: 16px;
-    }
-
-    label{font-weight:700;}
-    .form-control, .form-select{
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,.25);
-    }
-
-    .btn-primary{
-      border-radius: 12px;
-      font-weight: 800;
-    }
-
     .pedido-row{
       background: rgba(255,255,255,.12);
       border: 1px solid rgba(255,255,255,.22);
@@ -60,18 +37,13 @@
       padding: 12px;
       margin-top: 10px;
     }
-
-    .text-darkish{ color: rgba(255,255,255,.95); }
-    .hint{ font-size:.9rem; opacity:.9; }
   </style>
 </head>
 <body>
 
 <div class="card">
-  <h4 class="title text-darkish">Requerimientos del periodo</h4>
-  <div class="subtitle text-darkish">
-    Selecciona <b>año</b> y <b>mes</b>, indica cuántos pedidos registrarás y captura el número de pedido por cada uno.
-  </div>
+  <h4 class="fw-bold mb-1">Requerimientos del periodo</h4>
+  <div class="mb-3">Periodo: <b>{{ months[month] }} {{ year }}</b></div>
 
   {% with messages = get_flashed_messages() %}
     {% if messages %}
@@ -83,41 +55,27 @@
 
   <form method="POST" id="reqForm">
     <div class="row g-3">
-      <div class="col-md-4">
-        <label class="form-label text-darkish">Año</label>
-        <input type="number" class="form-control" name="year" id="year" placeholder="2026" required>
-      </div>
-
-      <div class="col-md-4">
-        <label class="form-label text-darkish">Mes</label>
-        <select class="form-select" name="month" id="month" required>
-          <option value="" selected disabled>Selecciona...</option>
-          {% for k,v in months.items() %}
-            <option value="{{ k }}">{{ v }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="col-md-4">
-        <label class="form-label text-darkish">¿Cuántos pedidos registrarás?</label>
+      <div class="col-md-6">
+        <label class="form-label fw-bold">¿Cuántos pedidos registrarás?</label>
         <input type="number" class="form-control" name="count" id="count" min="1" max="50" placeholder="Ej: 3" required>
-        <div class="hint mt-1 text-darkish">Se crearán proyectos/pedidos para ese periodo.</div>
+      </div>
+      <div class="col-md-6 d-flex align-items-end gap-2">
+        <a href="{{ url_for('dashboard_proveedor', year=year, month=month) }}" class="btn btn-secondary w-100">
+          No se registrarán nuevos pedidos
+        </a>
+        <a href="{{ url_for('meses_habilitados', year=year) }}" class="btn btn-outline-light w-100">
+          Volver
+        </a>
       </div>
     </div>
 
     <div id="pedidosContainer" class="mt-3"></div>
 
-    <div class="d-flex gap-2 mt-3 flex-wrap">
-  <button type="submit" class="btn btn-primary">Guardar y continuar</button>
-
-  <!-- NUEVO: No registrar pedidos -->
-  <a href="{{ url_for('dashboard_proveedor') }}" class="btn btn-secondary">
-    No se registrarán nuevos pedidos
-  </a>
-
-  <a href="{{ url_for('logout') }}" class="btn btn-outline-light">Cerrar sesión</a>
+    <div class="d-flex gap-2 mt-3">
+      <button type="submit" class="btn btn-primary fw-bold">Guardar pedidos</button>
+    </div>
+  </form>
 </div>
-
 
 <script>
   const container = document.getElementById('pedidosContainer');
@@ -130,16 +88,15 @@
     for(let i=1; i<=n; i++){
       const div = document.createElement('div');
       div.className = 'pedido-row';
-
       div.innerHTML = `
         <div class="row g-2 align-items-end">
           <div class="col-md-6">
-            <label class="form-label text-darkish">No. de pedido #${i}</label>
+            <label class="form-label fw-bold">No. de pedido #${i}</label>
             <input type="text" class="form-control" name="pedido_no_${i}" placeholder="Ej: PED-000${i}" required>
           </div>
           <div class="col-md-6">
-            <div class="hint text-darkish">
-              Este pedido se convertirá en un proyecto del periodo seleccionado.
+            <div class="text-white-50">
+              Este pedido se mostrará en tu dashboard del periodo.
             </div>
           </div>
         </div>
